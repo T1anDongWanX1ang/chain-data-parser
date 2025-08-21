@@ -1,0 +1,146 @@
+{
+  "pipeline_name": "uniswap_token_transfer_pipeline",
+  "version": "1.0.0", 
+  "description": "监控Uniswap V2代币交易事件并获取代币信息",
+  "components": {
+    "event_monitor": {
+      "name": "事件监控器",
+      "enabled": true,
+      "type": "event_monitor",
+      "config": {
+        "chain_name": "ethereum",
+        "contract_address": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
+        "abi_path": "../abis/erc20.json",
+        "events_to_monitor": ["Transfer"],
+        "mode": "realtime",
+        "poll_interval": 1.0,
+        "output_format": "detailed"
+      }
+    },
+    "token_name_caller": {
+      "name": "代币名称查询器",
+      "enabled": true,
+      "type": "contract_caller",
+      "config": {
+        "chain_name": "ethereum",
+        "contract_address": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
+        "abi_path": "../abis/erc20.json",
+        "method_name": "name",
+        "method_params": []
+      }
+    },
+    "token_symbol_caller": {
+      "name": "代币符号查询器",
+      "enabled": true,
+      "type": "contract_caller",
+      "config": {
+        "chain_name": "ethereum",
+        "contract_address": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
+        "abi_path": "../abis/erc20.json",
+        "method_name": "symbol",
+        "method_params": []
+      }
+    },
+    "balance_caller": {
+      "name": "余额查询器",
+      "enabled": true,
+      "type": "contract_caller",
+      "config": {
+        "chain_name": "ethereum",
+        "contract_address": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
+        "abi_path": "../abis/erc20.json",
+        "method_name": "balanceOf",
+        "method_params": ["event_args.to"]
+      }
+    },
+    "data_mapper": {
+      "name": "数据映射器",
+      "enabled": true,
+      "type": "dict_mapper",
+      "config": {
+        "mapping_rules": [
+          {
+            "source_key": "event_name",
+            "target_key": "event_type",
+            "transformer": "to_string"
+          },
+          {
+            "source_key": "event_args.from",
+            "target_key": "sender_address",
+            "transformer": "to_lowercase"
+          },
+          {
+            "source_key": "event_args.to",
+            "target_key": "receiver_address", 
+            "transformer": "to_lowercase"
+          },
+          {
+            "source_key": "event_args.value",
+            "target_key": "transfer_amount",
+            "transformer": "to_string"
+          },
+          {
+            "source_key": "name",
+            "target_key": "token_name",
+            "transformer": "to_string"
+          },
+          {
+            "source_key": "symbol",
+            "target_key": "token_symbol",
+            "transformer": "to_string"
+          },
+          {
+            "source_key": "balanceOf",
+            "target_key": "receiver_balance",
+            "transformer": "to_string"
+          }
+        ]
+      }
+    },
+    "kafka_producer": {
+      "name": "Kafka消息发送器",
+      "enabled": true,
+      "type": "kafka_producer",
+      "config": {
+        "bootstrap_servers": "localhost:9092",
+        "topic": "token-transfer-events",
+        "acks": 1,
+        "retries": 3,
+        "batch_size": 16384,
+        "linger_ms": 0
+      }
+    }
+  },
+  "error_handling": {
+    "retry_policy": {
+      "max_retries": 3,
+      "retry_delay": 1.0,
+      "backoff_multiplier": 2.0
+    },
+    "error_components": {
+      "event_monitor": {
+        "on_error": "continue",
+        "fallback_data": {}
+      },
+      "contract_caller": {
+        "on_error": "use_default",
+        "default_values": {
+          "token_name": "Unknown",
+          "token_symbol": "UNK"
+        }
+      }
+    }
+  },
+  "performance": {
+    "batch_processing": {
+      "enabled": false,
+      "batch_size": 100,
+      "batch_timeout": 5.0
+    },
+    "caching": {
+      "enabled": true,
+      "cache_ttl": 300,
+      "cache_size": 1000
+    }
+  }
+}

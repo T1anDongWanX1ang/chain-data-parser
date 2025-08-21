@@ -1,0 +1,113 @@
+{
+    "pipeline_name": "usdc_transfer_monitor",
+    "description": "USDC转账事件监控管道配置",
+    "components": {
+        "event_monitor": {
+            "name": "USDC转账事件监控器",
+            "type": "event_monitor",
+            "config": {
+                "chain_name": "ethereum",
+                "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+                "abi_path": "../abis/erc20.json",
+                "events_to_monitor": [
+                    "Transfer"
+                ],
+                "mode": "realtime",
+                "poll_interval": 1.0,
+                "output_format": "detailed"
+            }
+        },
+        "symbol_caller": {
+            "name": "USDC符号查询器",
+            "type": "contract_caller",
+            "config": {
+                "chain_name": "ethereum",
+                "abi_path": "../abis/erc20.json",
+                "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+                "method_name": "symbol",
+                "method_params": []
+            }
+        },
+        "decimals_caller": {
+            "name": "USDC精度查询器",
+            "type": "contract_caller",
+            "config": {
+                "chain_name": "ethereum",
+                "abi_path": "../abis/erc20.json",
+                "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+                "method_name": "decimals",
+                "method_params": []
+            }
+        },
+        "dict_mapper": {
+            "name": "USDC转账数据映射器",
+            "enabled": true,
+            "type": "dict_mapper",
+            "config": {
+                "mapping_rules": [
+                    {
+                        "source_key": "event_name",
+                        "target_key": "event_type",
+                        "transformer": "to_string"
+                    },
+                    {
+                        "source_key": "transaction_hash",
+                        "target_key": "transaction_hash",
+                        "transformer": "to_lowercase"
+                    },
+                    {
+                        "source_key": "block_number",
+                        "target_key": "block_number",
+                        "transformer": "to_int"
+                    },
+                    {
+                        "source_key": "args.from",
+                        "target_key": "from_address",
+                        "transformer": "to_lowercase"
+                    },
+                    {
+                        "source_key": "args.to",
+                        "target_key": "to_address",
+                        "transformer": "to_lowercase"
+                    },
+                    {
+                        "source_key": "args.value",
+                        "target_key": "transfer_amount",
+                        "transformer": "to_string"
+                    },
+                    {
+                        "source_key": "symbol_result",
+                        "target_key": "token_symbol"
+                    },
+                    {
+                        "source_key": "decimals_result",
+                        "target_key": "token_decimals",
+                        "transformer": "to_int"
+                    }
+                ]
+            }
+        },
+        "kafka_producer": {
+            "name": "USDC转账Kafka生产者",
+            "enabled": true,
+            "type": "kafka_producer",
+            "config": {
+                "bootstrap_servers": "localhost:9092",
+                "topic": "usdc-transfers",
+                "acks": 1,
+                "retries": 3,
+                "batch_size": 16384,
+                "linger_ms": 0,
+                "sync_send": true
+            },
+            "message_config": {
+                "key_field": "transaction_hash",
+                "partition_strategy": "hash",
+                "serialization_format": "json"
+            },
+            "input_dependencies": {
+                "data": "${dict_mapper.output}"
+            }
+        }
+    }
+}

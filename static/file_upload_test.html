@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件上传测试页面</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .upload-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            background-color: #fafafa;
+        }
+        .upload-section h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        input[type="file"] {
+            margin: 10px 0;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 100%;
+        }
+        input[type="text"] {
+            margin: 10px 0;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 100%;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📁 文件上传测试页面</h1>
+        
+        <!-- 上传配置信息 -->
+        <div class="upload-section">
+            <h3>📋 上传配置信息</h3>
+            <button onclick="getUploadInfo()">获取配置信息</button>
+            <div id="configResult" class="result info" style="display: none;"></div>
+        </div>
+        
+        <!-- 单文件上传 -->
+        <div class="upload-section">
+            <h3>📄 单文件上传</h3>
+            <input type="file" id="singleFile" accept=".json,.txt,.csv,.xlsx,.pdf,.png,.jpg,.zip,.sol">
+            <input type="text" id="singleCustomPath" placeholder="自定义保存路径 (可选)">
+            <button onclick="uploadSingleFile()">上传文件</button>
+            <div class="loading" id="singleLoading">上传中...</div>
+            <div id="singleResult" class="result" style="display: none;"></div>
+        </div>
+        
+        <!-- 多文件上传 -->
+        <div class="upload-section">
+            <h3>📁 多文件上传</h3>
+            <input type="file" id="multipleFiles" multiple accept=".json,.txt,.csv,.xlsx,.pdf,.png,.jpg,.zip,.sol">
+            <input type="text" id="multipleCustomPath" placeholder="自定义保存路径 (可选)">
+            <button onclick="uploadMultipleFiles()">批量上传</button>
+            <div class="loading" id="multipleLoading">上传中...</div>
+            <div id="multipleResult" class="result" style="display: none;"></div>
+        </div>
+        
+        <!-- 文件删除 -->
+        <div class="upload-section">
+            <h3>🗑️ 文件删除</h3>
+            <input type="text" id="deleteFilePath" placeholder="要删除的文件路径">
+            <button onclick="deleteFile()">删除文件</button>
+            <div id="deleteResult" class="result" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/file';
+        
+        // 显示结果
+        function showResult(elementId, data, isError = false) {
+            const element = document.getElementById(elementId);
+            element.textContent = JSON.stringify(data, null, 2);
+            element.className = `result ${isError ? 'error' : 'success'}`;
+            element.style.display = 'block';
+        }
+        
+        // 显示加载状态
+        function showLoading(elementId, show = true) {
+            document.getElementById(elementId).style.display = show ? 'block' : 'none';
+        }
+        
+        // 获取上传配置信息
+        async function getUploadInfo() {
+            try {
+                const response = await fetch(`${API_BASE}/info`);
+                const data = await response.json();
+                showResult('configResult', data);
+            } catch (error) {
+                showResult('configResult', { error: error.message }, true);
+            }
+        }
+        
+        // 上传单个文件
+        async function uploadSingleFile() {
+            const fileInput = document.getElementById('singleFile');
+            const customPath = document.getElementById('singleCustomPath').value;
+            
+            if (!fileInput.files.length) {
+                showResult('singleResult', { error: '请选择文件' }, true);
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            if (customPath) {
+                formData.append('custom_path', customPath);
+            }
+            
+            try {
+                showLoading('singleLoading', true);
+                const response = await fetch(`${API_BASE}/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    showResult('singleResult', data);
+                } else {
+                    showResult('singleResult', data, true);
+                }
+            } catch (error) {
+                showResult('singleResult', { error: error.message }, true);
+            } finally {
+                showLoading('singleLoading', false);
+            }
+        }
+        
+        // 上传多个文件
+        async function uploadMultipleFiles() {
+            const fileInput = document.getElementById('multipleFiles');
+            const customPath = document.getElementById('multipleCustomPath').value;
+            
+            if (!fileInput.files.length) {
+                showResult('multipleResult', { error: '请选择文件' }, true);
+                return;
+            }
+            
+            const formData = new FormData();
+            for (let file of fileInput.files) {
+                formData.append('files', file);
+            }
+            if (customPath) {
+                formData.append('custom_path', customPath);
+            }
+            
+            try {
+                showLoading('multipleLoading', true);
+                const response = await fetch(`${API_BASE}/upload/multiple`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    showResult('multipleResult', data);
+                } else {
+                    showResult('multipleResult', data, true);
+                }
+            } catch (error) {
+                showResult('multipleResult', { error: error.message }, true);
+            } finally {
+                showLoading('multipleLoading', false);
+            }
+        }
+        
+        // 删除文件
+        async function deleteFile() {
+            const filePath = document.getElementById('deleteFilePath').value;
+            
+            if (!filePath) {
+                showResult('deleteResult', { error: '请输入文件路径' }, true);
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/delete/${encodeURIComponent(filePath)}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    showResult('deleteResult', data);
+                } else {
+                    showResult('deleteResult', data, true);
+                }
+            } catch (error) {
+                showResult('deleteResult', { error: error.message }, true);
+            }
+        }
+        
+        // 页面加载时自动获取配置信息
+        window.onload = function() {
+            getUploadInfo();
+        };
+    </script>
+</body>
+</html>

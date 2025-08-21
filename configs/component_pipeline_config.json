@@ -1,0 +1,133 @@
+{
+    "pipeline_name": "blockchain_data_pipeline",
+    "version": "1.0.0",
+    "description": "区块链数据解析管道配置",
+    "components": {
+        "event_monitor": {
+            "name": "事件监控器",
+            "type": "event_monitor",
+            "config": {
+                "chain_name": "ethereum",
+                "contract_address": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
+                "abi_path": "abis/erc20.json",
+                "events_to_monitor": [
+                    "Transfer",
+                    "Swap",
+                    "Mint"
+                ],
+                "mode": "realtime",
+                "poll_interval": 1.0,
+                "output_format": "detailed"
+            }
+        },
+        "contract_caller": {
+            "name": "合约调用器",
+            "type": "contract_caller",
+            "config": {
+                "chain_name": "ethereum",
+                "abi_path": "abis/erc20.json",
+                "contract_address": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
+                "method_name": "name",
+                "method_params": [
+                    "args.to"
+                ]
+            }
+        },
+        "contract_caller2": {
+            "name": "合约调用器",
+            "type": "contract_caller",
+            "config": {
+                "chain_name": "ethereum",
+                "abi_path": "abis/erc20.json",
+                "contract_address": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
+                "method_name": "symbol",
+                "method_params": [
+                    "event_args.to"
+                ]
+            }
+        },
+        "dict_mapper": {
+            "name": "字典映射器",
+            "enabled": true,
+            "type": "dict_mapper",
+            "config": {
+                "mapping_rules": [
+                    {
+                        "source_key": "event_type",
+                        "target_key": "event_type",
+                        "transformer": "to_string"
+                    },
+                    {
+                        "source_key": "tx_hash",
+                        "target_key": "transaction_hash",
+                        "transformer": "to_lowercase"
+                    },
+                    {
+                        "source_key": "block_num",
+                        "target_key": "block_number",
+                        "transformer": "to_int"
+                    },
+                    {
+                        "source_key": "event_args.from",
+                        "target_key": "from_address",
+                        "transformer": "to_lowercase"
+                    },
+                    {
+                        "source_key": "event_args.to",
+                        "target_key": "to_address",
+                        "transformer": "to_lowercase"
+                    },
+                    {
+                        "source_key": "event_args.value",
+                        "target_key": "transfer_amount",
+                        "transformer": "to_string"
+                    },
+                    {
+                        "source_key": "token_name",
+                        "target_key": "token_name"
+                    },
+                    {
+                        "source_key": "token_symbol",
+                        "target_key": "token_symbol"
+                    },
+                    {
+                        "source_key": "token_decimals",
+                        "target_key": "token_decimals",
+                        "transformer": "to_int"
+                    },
+                    {
+                        "source_key": "recipient_balance",
+                        "target_key": "recipient_balance",
+                        "transformer": "to_string"
+                    },
+                    {
+                        "source_key": "total_supply",
+                        "target_key": "total_supply",
+                        "transformer": "to_string"
+                    }
+                ]
+            }
+        },
+        "kafka_producer": {
+            "name": "Kafka生产者",
+            "enabled": true,
+            "type": "kafka_producer",
+            "config": {
+                "bootstrap_servers": "localhost:9092",
+                "topic": "blockchain-events",
+                "acks": 1,
+                "retries": 3,
+                "batch_size": 16384,
+                "linger_ms": 0
+            },
+            "message_config": {
+                "key_field": "transaction_hash",
+                "partition_strategy": "hash",
+                "serialization_format": "json"
+            },
+            "input_dependencies": {
+                "data": "${dict_mapper.output}"
+            }
+        }
+    }
+}
