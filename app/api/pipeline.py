@@ -53,6 +53,7 @@ class PipelineListResponse(BaseModel):
 class PipelineStartRequest(BaseModel):
     """管道启动请求模型"""
     pipeline_id: int = Field(..., description="管道ID")
+    log_path: Optional[str] = Field(None, description="日志文件路径（可选）")
 
 
 class PipelineStartResponse(BaseModel):
@@ -348,7 +349,7 @@ async def start_pipeline(
     """
     try:
         service = PipelineConfigService(session)
-        result = await service.start_pipeline_task(request.pipeline_id)
+        result = await service.start_pipeline_task(request.pipeline_id, request.log_path)
         
         return PipelineStartResponse(**result)
         

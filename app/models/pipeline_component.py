@@ -78,10 +78,10 @@ class PipelineComponent(Base):
         uselist=False
     )
     
-    dict_mapper = relationship(
+    dict_mappers = relationship(
         "DictMapper",
         back_populates="component",
-        uselist=False
+        uselist=True
     )
     
     def __repr__(self) -> str:

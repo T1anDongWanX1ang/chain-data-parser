@@ -25,6 +25,12 @@ class DictMapper(Base):
         comment="组件ID"
     )
     
+    event_name: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="事件名称"
+    )
+    
     dict_mapper: Mapped[Optional[str]] = mapped_column(
         String(2048),
         nullable=True,
@@ -51,17 +57,18 @@ class DictMapper(Base):
     # 关系定义 (使用字符串引用避免循环导入)
     component = relationship(
         "PipelineComponent",
-        back_populates="dict_mapper"
+        back_populates="dict_mappers"
     )
     
     def __repr__(self) -> str:
-        return f"<DictMapper(id={self.id}, component_id={self.component_id})>"
+        return f"<DictMapper(id={self.id}, component_id={self.component_id}, event_name={self.event_name})>"
     
     def to_dict(self) -> dict:
         """转换为字典"""
         return {
             'id': self.id,
             'component_id': self.component_id,
+            'event_name': self.event_name,
             'dict_mapper': self.dict_mapper,
             'create_time': self.create_time.isoformat() if self.create_time else None,
             'update_time': self.update_time.isoformat() if self.update_time else None

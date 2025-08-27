@@ -17,7 +17,6 @@ from app.models.evm_contract_caller import EvmContractCaller
 from app.models.kafka_producer import KafkaProducer
 from app.models.dict_mapper import DictMapper
 from sqlalchemy import select
-from app.component.pipeline_executor import BlockchainDataPipeline
 
 
 class PipelineConfigService:
@@ -173,19 +172,36 @@ class PipelineConfigService:
 
     async def _create_dict_mapper(self, component_id: int, component_info: Dict[str, Any]):
         """创建字典映射器配置"""
-        mapping_rules = component_info.get('mapping_rules', [])
-        mapper_config = {
-            'mapping_rules': mapping_rules
-        }
-        config_str = json.dumps(mapper_config, ensure_ascii=False)
+        # 只支持新的 dict_mappers 配置格式
+        dict_mappers_config = component_info.get('dict_mappers', [])
+        
+        # 如果没有 dict_mappers 配置，抛出错误
+        if not dict_mappers_config:
+            raise ValueError("dict_mapper 组件必须包含 dict_mappers 配置")
+        
+        # 创建多条 dict_mapper 记录
+        for mapper_config in dict_mappers_config:
+            event_name = mapper_config.get('event_name')
+            mapping_rules = mapper_config.get('mapping_rules', [])
+            
+            # 验证必需字段
+            if not mapping_rules:
+                raise ValueError(f"dict_mapper 配置必须包含 mapping_rules: event_name={event_name}")
+            
+            # 构建配置JSON
+            config_dict = {
+                'mapping_rules': mapping_rules
+            }
+            config_str = json.dumps(config_dict, ensure_ascii=False)
 
-        dict_mapper = DictMapper(
-            component_id=component_id,
-            dict_mapper=config_str,
-            create_time=datetime.now(),
-            update_time=datetime.now()
-        )
-        self.session.add(dict_mapper)
+            dict_mapper = DictMapper(
+                component_id=component_id,
+                event_name=event_name,
+                dict_mapper=config_str,
+                create_time=datetime.now(),
+                update_time=datetime.now()
+            )
+            self.session.add(dict_mapper)
 
     async def _create_kafka_producer(self, component_id: int, component_info: Dict[str, Any]):
         """创建Kafka生产者配置"""
@@ -267,12 +283,24 @@ class PipelineConfigService:
                     dm_result = await self.session.execute(
                         select(DictMapper).where(DictMapper.component_id == component.id)
                     )
-                    dm = dm_result.scalar_one_or_none()
-                    if dm:
+                    dict_mappers = dm_result.scalars().all()
+                    
+                    # 构建多条 dict_mapper 配置
+                    dict_mappers_config = []
+                    for dm in dict_mappers:
                         mapper_config = json.loads(dm.dict_mapper) if dm.dict_mapper else {}
-                        component_data.update({
-                            "mapping_rules": mapper_config.get('mapping_rules', [])
-                        })
+                        dict_mapper_item = {
+                            "id": dm.id,
+                            "event_name": dm.event_name,
+                            "mapping_rules": mapper_config.get('mapping_rules', []),
+                            "create_time": dm.create_time.isoformat() if dm.create_time else None,
+                            "update_time": dm.update_time.isoformat() if dm.update_time else None
+                        }
+                        dict_mappers_config.append(dict_mapper_item)
+                    
+                    component_data.update({
+                        "dict_mappers": dict_mappers_config
+                    })
 
                 elif component.type == 'kafka_producer':
                     kp_result = await self.session.execute(
@@ -337,11 +365,12 @@ class PipelineConfigService:
                 detail=f"查询失败: {str(e)}"
             )
 
-    async def start_pipeline_task(self, pipeline_id: int) -> Dict[str, Any]:
+    async def start_pipeline_task(self, pipeline_id: int, log_path: str = None) -> Dict[str, Any]:
         """启动管道任务
         
         Args:
             pipeline_id: 管道ID
+            log_path: 日志文件路径（可选）
             
         Returns:
             Dict[str, Any]: 启动结果
@@ -351,11 +380,17 @@ class PipelineConfigService:
             pipeline_config = await self.get_pipeline_config(pipeline_id)
 
             # 创建任务记录
+            # 使用传入的日志路径或生成默认路径
+            if log_path:
+                task_log_path = log_path
+            else:
+                task_log_path = f"logs/pipeline_{pipeline_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+            
             task = PipelineTask(
                 pipeline_id=pipeline_id,
                 create_time=datetime.now(),
                 status=0,  # 正在运行
-                log_path=f"logs/pipeline_{pipeline_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+                log_path=task_log_path
             )
             self.session.add(task)
             await self.session.flush()  # 获取任务ID
@@ -401,8 +436,9 @@ class PipelineConfigService:
                 # 创建管道执行器并运行
                 logger.info(f"开始执行管道任务: task_id={task_id}")
 
-                # 使用配置字典创建管道执行器
-                pipeline = BlockchainDataPipeline(config_dict=config, log_path=task.log_path)
+                # 使用优化版配置字典创建管道执行器
+                from app.component.pipeline_executor_optimized import OptimizedBlockchainDataPipeline
+                pipeline = OptimizedBlockchainDataPipeline(config_dict=config, log_path=task.log_path)
 
                 # 执行管道
                 await pipeline.execute_pipeline()
