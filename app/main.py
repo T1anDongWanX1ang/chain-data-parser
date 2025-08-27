@@ -11,6 +11,8 @@ from app.services.database_service import database_service
 from app.api.router import api_router
 from app.startup import startup_event, shutdown_event
 import uvicorn
+import sys
+import os
 
 
 @asynccontextmanager
@@ -104,7 +106,9 @@ app.include_router(api_router, prefix="/api/v1")
 
 
 if __name__ == "__main__":
-
+    print("当前工作目录:", os.getcwd())
+    print("Python 路径:", sys.path)
+    print("文件位置:", __file__)
     
     uvicorn.run(
         "app.main:app",
