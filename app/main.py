@@ -5,15 +5,20 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+import sys
+import os
+
+print("当前工作目录:", os.getcwd())
+print("Python 路径:", sys.path)
+print("文件位置:", __file__)
+
+
 from app.config import settings
 from app.utils.logger import setup_logger
 from app.services.database_service import database_service
 from app.api.router import api_router
 from app.startup import startup_event, shutdown_event
 import uvicorn
-import sys
-import os
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -106,9 +111,7 @@ app.include_router(api_router, prefix="/api/v1")
 
 
 if __name__ == "__main__":
-    print("当前工作目录:", os.getcwd())
-    print("Python 路径:", sys.path)
-    print("文件位置:", __file__)
+
     
     uvicorn.run(
         "app.main:app",
