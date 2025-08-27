@@ -1,0 +1,12 @@
+INFO:     Will watch for changes in these directories: ['/Users/qmk/Documents/code/chain-data-parser']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [80079] using StatReload
+🚀 正在启动链数据解析系统...
+📁 项目目录: /Users/qmk/Documents/code/chain-data-parser
+🐍 Python路径: /Users/qmk/Documents/code/chain-data-parser
+INFO:     Will watch for changes in these directories: ['/Users/qmk/Documents/code/chain-data-parser']
+ERROR:    [Errno 48] Address already in use
+🚀 正在启动链数据解析系统...
+📁 项目目录: /Users/qmk/Documents/code/chain-data-parser
+🐍 Python路径: /Users/qmk/Documents/code/chain-data-parser
+INFO:     Stopping reloader process [80079]

@@ -8,6 +8,7 @@ from .evm_contract_caller import EvmContractCaller
 from .kafka_producer import KafkaProducer
 from .dict_mapper import DictMapper
 from .pipeline_classification import PipelineClassification
+from .writer_db_config import WriterDbConfig
 
 __all__ = [
     "Base",
@@ -18,5 +19,6 @@ __all__ = [
     "EvmContractCaller",
     "KafkaProducer",
     "DictMapper",
-    "PipelineClassification"
+    "PipelineClassification",
+    "WriterDbConfig"
 ]
