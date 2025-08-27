@@ -112,6 +112,49 @@ alembic upgrade head
 python -m app.main
 ```
 
+### 5. 简化启动方式 ⭐
+
+我们提供了多种简化的启动方式，无需记忆复杂的命令：
+
+#### 方式1：使用Makefile（推荐）
+
+```bash
+# 查看所有可用命令
+make help
+
+# 启动服务（开发模式，带热重载）
+make start
+
+# 启动服务（生产模式，性能更好）
+make start-prod
+
+# 查看服务状态
+make status
+
+# 测试API接口
+make test
+
+# 停止服务
+make stop
+```
+
+#### 方式2：使用启动脚本
+
+```bash
+# 开发模式启动（带热重载）
+./start.sh
+
+# 生产模式启动
+./start_prod.sh
+```
+
+#### 方式3：传统方式
+
+```bash
+# 激活虚拟环境并启动
+source .venv/bin/activate && python start_server.py
+```
+
 ## 配置说明
 
 ### 环境变量
