@@ -446,12 +446,14 @@ class PipelineConfigService:
             )
             self.session.add(task)
             await self.session.flush()  # 获取任务ID
-
-            # 异步启动管道（直接使用查询到的配置）
-            asyncio.create_task(self._execute_pipeline_async(task.id, pipeline_config))
-
-            # 提交事务
+            
+            # 先提交事务，确保任务记录已保存
             await self.session.commit()
+            
+            logger.info(f"任务记录已创建并提交: task_id={task.id}, pipeline_id={pipeline_id}")
+
+            # 然后异步启动管道（直接使用查询到的配置）
+            asyncio.create_task(self._execute_pipeline_async(task.id, pipeline_config))
 
             logger.info(f"管道任务启动成功: pipeline_id={pipeline_id}, task_id={task.id}")
 
@@ -474,31 +476,37 @@ class PipelineConfigService:
 
     async def _execute_pipeline_async(self, task_id: int, config: Dict[str, Any]):
         """异步执行管道任务"""
+        import asyncio
+        task_log_path = None
+        
         try:
             # 这里应该使用独立的数据库会话
             from app.services.database_service import database_service
 
+            # 第一步：获取任务信息
             async with database_service.get_session() as session:
-                # 更新任务状态为运行中
+                # 获取任务信息
                 task = await session.get(PipelineTask, task_id)
                 if not task:
                     logger.error(f"任务不存在: task_id={task_id}")
                     return
                 
-                task.status = 0  # 正在运行
-                await session.commit()
+                # 保存任务信息
+                task_log_path = task.log_path
+                logger.info(f"开始执行任务: task_id={task_id}, log_path={task_log_path}")
 
-                # 创建管道执行器并运行
-                logger.info(f"开始执行管道任务: task_id={task_id}")
+            # 第二步：执行管道任务
+            logger.info(f"开始执行管道任务: task_id={task_id}")
 
-                # 使用优化版配置字典创建管道执行器
-                from app.component.pipeline_executor_optimized import OptimizedBlockchainDataPipeline
-                pipeline = OptimizedBlockchainDataPipeline(config_dict=config, log_path=task.log_path)
+            # 使用优化版配置字典创建管道执行器
+            from app.component.pipeline_executor_optimized import OptimizedBlockchainDataPipeline
+            pipeline = OptimizedBlockchainDataPipeline(config_dict=config, log_path=task_log_path)
 
-                # 执行管道
-                await pipeline.execute_pipeline()
+            # 第三步：执行管道
+            await pipeline.execute_pipeline()
 
-                # 更新任务状态为成功
+            # 第四步：更新任务状态为成功
+            async with database_service.get_session() as session:
                 task = await session.get(PipelineTask, task_id)
                 if task:
                     task.status = 1  # 成功
