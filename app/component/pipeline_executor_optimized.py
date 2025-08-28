@@ -480,7 +480,8 @@ class KafkaProducerComponent(PipelineComponent):
                 sync_send=self.config.get('sync_send', False),
                 retries=self.config.get('retries', 3),
                 batch_size=self.config.get('batch_size', 16384),
-                linger_ms=self.config.get('linger_ms', 0)
+                linger_ms=self.config.get('linger_ms', 0),
+                message_format=self.config.get('message_format', 'simple')  # 默认只发送数据部分
             )
             
             self.kafka_client = KafkaClient(kafka_config)
@@ -501,10 +502,19 @@ class KafkaProducerComponent(PipelineComponent):
                 self.logger.error("未配置Kafka主题")
                 return context
             
-            # 发送消息
-            self.kafka_client.send_message(topic, context.data, context.data)
+            # 打印要发送到Kafka的数据
+            import json
+            self.logger.info(f"准备发送到Kafka - topic: {topic}")
+            self.logger.info(f"发送数据: {json.dumps(context.data, ensure_ascii=False, indent=2)}")
             
-            self.logger.info(f"消息发送成功: topic={topic}, 数据大小={len(str(context.data))}")
+            # 发送消息
+            success = self.kafka_client.send_message(topic, context.data)
+            
+            if success:
+                self.logger.info(f"✅ Kafka消息发送成功: topic={topic}")
+            else:
+                self.logger.error(f"❌ Kafka消息发送失败: topic={topic}")
+            
             return context
             
         except Exception as e:
