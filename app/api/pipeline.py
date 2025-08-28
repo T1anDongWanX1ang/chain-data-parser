@@ -141,6 +141,13 @@ class PipelineCreateResponse(BaseModel):
     data: Optional[PipelineItem] = Field(None, description="管道数据")
 
 
+class PipelineUpdateResponse(BaseModel):
+    """Pipeline更新响应模型"""
+    success: bool = Field(..., description="是否成功")
+    message: str = Field(..., description="响应消息")
+    data: Optional[PipelineItem] = Field(None, description="管道数据")
+
+
 # 树形结构相关模型
 class TreeClassificationNode(BaseModel):
     """树形结构节点模型"""
@@ -170,6 +177,12 @@ class PipelineClassificationRequest(BaseModel):
     """管道分类请求模型"""
     parent_id: int = Field(..., description="父级ID")
     name: Optional[str] = Field(None, description="分类名称", max_length=255)
+
+
+class PipelineUpdateRequest(BaseModel):
+    """管道更新请求模型"""
+    name: Optional[str] = Field(None, description="管道名称", max_length=255)
+    description: Optional[str] = Field(None, description="管道描述", max_length=255)
 
 
 class PipelineClassificationUpdateRequest(BaseModel):
@@ -785,15 +798,19 @@ async def get_pipeline_tree(
     try:
         from sqlalchemy import select
         
-        # 查询所有分类
+        # 查询所有分类（排除已删除的）
         classifications_result = await session.execute(
-            select(PipelineClassification).order_by(PipelineClassification.id)
+            select(PipelineClassification)
+            .where(PipelineClassification.disabled == False)
+            .order_by(PipelineClassification.id)
         )
         all_classifications = classifications_result.scalars().all()
         
-        # 查询所有管道
+        # 查询所有管道（排除已删除的）
         pipelines_result = await session.execute(
-            select(Pipeline).order_by(Pipeline.id)
+            select(Pipeline)
+            .where(Pipeline.disabled == False)
+            .order_by(Pipeline.id)
         )
         all_pipelines = pipelines_result.scalars().all()
         
@@ -976,11 +993,27 @@ async def update_pipeline_classification(
                 detail=f"分类不存在: {classification_id}"
             )
         
+        # 检查分类是否已被删除
+        if classification.disabled:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="分类已被删除，无法修改"
+            )
+        
         # 更新字段
+        updated = False
         if request.parent_id is not None:
             classification.parent_id = request.parent_id
-        if request.name is not None:
-            classification.name = request.name
+            updated = True
+        if request.name is not None and request.name.strip():
+            classification.name = request.name.strip()
+            updated = True
+        
+        if not updated:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="没有提供要更新的字段"
+            )
         
         await session.commit()
         
@@ -1017,9 +1050,10 @@ async def delete_pipeline_classification(
     session: AsyncSession = Depends(get_db_session)
 ):
     """
-    删除管道分类
+    删除管道分类（逻辑删除）
     
-    根据分类ID删除管道分类记录。
+    根据分类ID逻辑删除管道分类记录。
+    会检查是否有子分类，如果有子分类则不能删除。
     
     Args:
         classification_id: 分类ID
@@ -1029,6 +1063,9 @@ async def delete_pipeline_classification(
         Dict: 删除结果
     """
     try:
+        from sqlalchemy import select
+        from datetime import datetime
+        
         # 查找现有分类
         classification = await session.get(PipelineClassification, classification_id)
         if not classification:
@@ -1037,11 +1074,50 @@ async def delete_pipeline_classification(
                 detail=f"分类不存在: {classification_id}"
             )
         
-        # 删除分类
-        await session.delete(classification)
+        # 检查分类是否已被删除
+        if classification.disabled:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="分类已被删除"
+            )
+        
+        # 检查是否有子分类
+        child_result = await session.execute(
+            select(PipelineClassification).where(
+                PipelineClassification.parent_id == classification_id,
+                PipelineClassification.disabled == False
+            )
+        )
+        child_classifications = child_result.scalars().all()
+        
+        if child_classifications:
+            child_names = [child.name for child in child_classifications]
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"该分类下还有子分类，不能删除。子分类: {', '.join(child_names)}"
+            )
+        
+        # 检查是否有关联的管道
+        pipeline_result = await session.execute(
+            select(Pipeline).where(
+                Pipeline.classification_id == classification_id,
+                Pipeline.disabled == False
+            )
+        )
+        pipelines = pipeline_result.scalars().all()
+        
+        if pipelines:
+            pipeline_names = [pipeline.name for pipeline in pipelines]
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"该分类下还有管道，不能删除。管道: {', '.join(pipeline_names)}"
+            )
+        
+        # 逻辑删除分类
+        classification.disabled = True
         await session.commit()
         
-        logger.info(f"删除管道分类成功: id={classification_id}")
+        logger.info(f"逻辑删除管道分类成功: id={classification_id}, name={classification.name}")
         
         return {
             "success": True,
@@ -1052,6 +1128,167 @@ async def delete_pipeline_classification(
         raise
     except Exception as e:
         logger.error(f"删除管道分类失败: {e}")
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"删除失败: {str(e)}"
+        )
+
+
+@router.put("/{pipeline_id}", response_model=PipelineUpdateResponse, summary="修改管道")
+async def update_pipeline(
+    pipeline_id: int,
+    request: PipelineUpdateRequest,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """
+    修改管道
+    
+    根据管道ID更新管道信息，支持修改名称和描述。
+    
+    Args:
+        pipeline_id: 管道ID
+        request: 包含要更新字段的请求体
+        session: 数据库会话
+    
+    Returns:
+        PipelineUpdateResponse: 更新结果
+    """
+    try:
+        from datetime import datetime
+        
+        # 查找现有管道
+        pipeline = await session.get(Pipeline, pipeline_id)
+        if not pipeline:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"管道不存在: {pipeline_id}"
+            )
+        
+        # 检查管道是否已被删除
+        if pipeline.disabled:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="管道已被删除，无法修改"
+            )
+        
+        # 更新字段
+        updated = False
+        if request.name is not None and request.name.strip():
+            pipeline.name = request.name.strip()
+            updated = True
+        if request.description is not None:
+            pipeline.description = request.description.strip() if request.description.strip() else None
+            updated = True
+        
+        if not updated:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="没有提供要更新的字段"
+            )
+        
+        # 更新修改时间
+        pipeline.update_time = datetime.now()
+        await session.commit()
+        
+        # 构建响应数据
+        pipeline_item = PipelineItem(
+            id=pipeline.id,
+            classification_id=pipeline.classification_id,
+            name=pipeline.name,
+            description=pipeline.description,
+            create_time=pipeline.create_time.isoformat() if pipeline.create_time else None,
+            update_time=pipeline.update_time.isoformat() if pipeline.update_time else None
+        )
+        
+        logger.info(f"修改管道成功: id={pipeline.id}, name={pipeline.name}")
+        
+        return PipelineUpdateResponse(
+            success=True,
+            message="修改管道成功",
+            data=pipeline_item
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"修改管道失败: {e}")
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"修改失败: {str(e)}"
+        )
+
+
+@router.delete("/{pipeline_id}", summary="删除管道")
+async def delete_pipeline(
+    pipeline_id: int,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """
+    删除管道（逻辑删除）
+    
+    根据管道ID逻辑删除管道记录。
+    会检查是否有正在运行的任务，如果有正在运行的任务则不能删除。
+    
+    Args:
+        pipeline_id: 管道ID
+        session: 数据库会话
+    
+    Returns:
+        Dict: 删除结果
+    """
+    try:
+        from sqlalchemy import select
+        from datetime import datetime
+        
+        # 查找现有管道
+        pipeline = await session.get(Pipeline, pipeline_id)
+        if not pipeline:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"管道不存在: {pipeline_id}"
+            )
+        
+        # 检查管道是否已被删除
+        if pipeline.disabled:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="管道已被删除"
+            )
+        
+        # 检查是否有正在运行的任务
+        running_tasks_result = await session.execute(
+            select(PipelineTask).where(
+                PipelineTask.pipeline_id == pipeline_id,
+                PipelineTask.status == 0  # 0表示正在运行
+            )
+        )
+        running_tasks = running_tasks_result.scalars().all()
+        
+        if running_tasks:
+            task_ids = [str(task.id) for task in running_tasks]
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"该管道还有正在运行的任务，不能删除。任务ID: {', '.join(task_ids)}"
+            )
+        
+        # 逻辑删除管道
+        pipeline.disabled = True
+        pipeline.update_time = datetime.now()
+        await session.commit()
+        
+        logger.info(f"逻辑删除管道成功: id={pipeline_id}, name={pipeline.name}")
+        
+        return {
+            "success": True,
+            "message": "删除管道成功"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除管道失败: {e}")
         await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

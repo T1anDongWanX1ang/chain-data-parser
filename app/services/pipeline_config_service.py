@@ -391,15 +391,16 @@ class PipelineConfigService:
             # 计算偏移量
             offset = (page - 1) * page_size
 
-            # 查询总记录数
+            # 查询总记录数（排除已删除的）
             count_result = await self.session.execute(
-                select(func.count(Pipeline.id))
+                select(func.count(Pipeline.id)).where(Pipeline.disabled == False)
             )
             total = count_result.scalar()
 
-            # 分页查询管道列表
+            # 分页查询管道列表（排除已删除的）
             result = await self.session.execute(
                 select(Pipeline)
+                .where(Pipeline.disabled == False)
                 .order_by(Pipeline.id.desc())  # 按ID降序排列，最新的在前面
                 .offset(offset)
                 .limit(page_size)

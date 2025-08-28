@@ -1,7 +1,7 @@
 """管道模型"""
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import BigInteger, String, DateTime
+from sqlalchemy import BigInteger, String, DateTime, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -48,6 +48,13 @@ class Pipeline(Base):
         comment="更新时间"
     )
     
+    disabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        comment="是否禁用(逻辑删除)"
+    )
+    
     # 关系定义 (使用字符串引用避免循环导入)
     components = relationship(
         "PipelineComponent",
@@ -72,5 +79,6 @@ class Pipeline(Base):
             'name': self.name,
             'description': self.description,
             'create_time': self.create_time.isoformat() if self.create_time else None,
-            'update_time': self.update_time.isoformat() if self.update_time else None
+            'update_time': self.update_time.isoformat() if self.update_time else None,
+            'disabled': self.disabled
         }
