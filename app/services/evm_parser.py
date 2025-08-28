@@ -43,6 +43,16 @@ class EVMParserService:
             'polygon': settings.blockchain.polygon_rpc_url,
         }
         return chain_mapping.get(chain_name.lower())
+    
+    def get_chain_id(self, chain_name: str) -> Optional[int]:
+        """根据链名称获取链ID"""
+        chain_id_mapping = {
+            'ethereum': 1,
+            'bsc': 56,
+            'base': 8453,
+            'solana': 501
+        }
+        return chain_id_mapping.get(chain_name.lower())
 
 
 # 全局实例

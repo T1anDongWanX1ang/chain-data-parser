@@ -72,6 +72,9 @@ class ContractEventMonitor():
     def _format_event_data(self, event_log) -> Dict[str, Any]:
         """格式化事件数据"""
         try:
+            # 获取链ID
+            chain_id = evm_parser_service.get_chain_id(self.chain_name)
+            
             # 基本事件信息
             formatted_data = {
                 "event_name": event_log.event,
@@ -80,7 +83,8 @@ class ContractEventMonitor():
                 "block_number": event_log.blockNumber,
                 "log_index": event_log.logIndex,
                 "timestamp": datetime.now().isoformat(),
-                "chain": self.chain_name
+                "chain": self.chain_name,
+                "chain_id": chain_id
             }
             
             # 事件参数

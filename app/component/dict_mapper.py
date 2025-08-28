@@ -143,22 +143,39 @@ class DictMapper:
             raise
     
     def _get_source_value(self, source_dict: Dict[str, Any], source_key: str) -> Any:
-        """获取源值，支持嵌套路径"""
-        if '.' not in source_key:
+        """获取源值，支持嵌套路径和数组索引"""
+        # 如果没有特殊字符，直接返回
+        if '.' not in source_key and '[' not in source_key:
             return source_dict.get(source_key)
         
-        # 处理嵌套路径，如 "user.profile.name"
-        keys = source_key.split('.')
+        # 解析复杂路径，支持数组索引
+        # 例如: "getReserves[0]", "user.addresses[1]", "data[0].name"
         current = source_dict
         
-        for key in keys:
-            if isinstance(current, dict):
-                current = current.get(key)
-            else:
-                return None
-            
+        # 将路径分解为段，处理数组索引
+        # "getReserves[0].user.name[1]" -> ["getReserves", "[0]", "user", "name", "[1]"]
+        segments = re.findall(r'[^.\[\]]+|\[[^\]]*\]', source_key)
+        
+        for segment in segments:
             if current is None:
                 break
+                
+            if segment.startswith('[') and segment.endswith(']'):
+                # 处理数组索引 [0], [1] 等
+                try:
+                    index = int(segment[1:-1])
+                    if isinstance(current, (list, tuple)) and 0 <= index < len(current):
+                        current = current[index]
+                    else:
+                        return None
+                except (ValueError, IndexError):
+                    return None
+            else:
+                # 处理普通键
+                if isinstance(current, dict):
+                    current = current.get(segment)
+                else:
+                    return None
         
         return current
     

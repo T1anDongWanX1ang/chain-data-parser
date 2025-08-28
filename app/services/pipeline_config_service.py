@@ -154,21 +154,48 @@ class PipelineConfigService:
         self.session.add(event_monitor)
 
     async def _create_contract_caller(self, component_id: int, component_info: Dict[str, Any]):
-        """创建合约调用器配置"""
-        method_params = component_info.get('method_params', [])
-        params_str = json.dumps(method_params) if method_params else None
+        """创建合约调用器配置 - 支持多条记录"""
+        # 支持两种配置格式：
+        # 1. 旧格式：单个合约调用器配置
+        # 2. 新格式：contract_callers 数组，支持多个合约调用器
+        
+        contract_callers_config = component_info.get('contract_callers', [])
+        
+        if contract_callers_config:
+            # 新格式：多个合约调用器
+            for caller_config in contract_callers_config:
+                method_params = caller_config.get('method_params', [])
+                params_str = json.dumps(method_params) if method_params else None
 
-        contract_caller = EvmContractCaller(
-            component_id=component_id,
-            chain_name=component_info.get('chain_name'),
-            abi_path=component_info.get('abi_path'),
-            contract_address=component_info.get('contract_address'),
-            method_name=component_info.get('method_name'),
-            method_params=params_str,
-            create_time=datetime.now(),
-            update_time=datetime.now()
-        )
-        self.session.add(contract_caller)
+                contract_caller = EvmContractCaller(
+                    component_id=component_id,
+                    event_name=caller_config.get('event_name'),
+                    chain_name=caller_config.get('chain_name'),
+                    abi_path=caller_config.get('abi_path'),
+                    contract_address=caller_config.get('contract_address'),
+                    method_name=caller_config.get('method_name'),
+                    method_params=params_str,
+                    create_time=datetime.now(),
+                    update_time=datetime.now()
+                )
+                self.session.add(contract_caller)
+        else:
+            # 旧格式：单个合约调用器（向后兼容）
+            method_params = component_info.get('method_params', [])
+            params_str = json.dumps(method_params) if method_params else None
+
+            contract_caller = EvmContractCaller(
+                component_id=component_id,
+                event_name=component_info.get('event_name'),
+                chain_name=component_info.get('chain_name'),
+                abi_path=component_info.get('abi_path'),
+                contract_address=component_info.get('contract_address'),
+                method_name=component_info.get('method_name'),
+                method_params=params_str,
+                create_time=datetime.now(),
+                update_time=datetime.now()
+            )
+            self.session.add(contract_caller)
 
     async def _create_dict_mapper(self, component_id: int, component_info: Dict[str, Any]):
         """创建字典映射器配置"""
@@ -269,14 +296,38 @@ class PipelineConfigService:
                     cc_result = await self.session.execute(
                         select(EvmContractCaller).where(EvmContractCaller.component_id == component.id)
                     )
-                    cc = cc_result.scalar_one_or_none()
-                    if cc:
+                    contract_callers = cc_result.scalars().all()
+                    
+                    if len(contract_callers) == 1:
+                        # 单个合约调用器，使用旧格式（向后兼容）
+                        cc = contract_callers[0]
                         component_data.update({
+                            "event_name": cc.event_name,
                             "chain_name": cc.chain_name,
                             "abi_path": cc.abi_path,
                             "contract_address": cc.contract_address,
                             "method_name": cc.method_name,
                             "method_params": json.loads(cc.method_params) if cc.method_params else []
+                        })
+                    elif len(contract_callers) > 1:
+                        # 多个合约调用器，使用新格式
+                        contract_callers_config = []
+                        for cc in contract_callers:
+                            caller_config = {
+                                "id": cc.id,
+                                "event_name": cc.event_name,
+                                "chain_name": cc.chain_name,
+                                "abi_path": cc.abi_path,
+                                "contract_address": cc.contract_address,
+                                "method_name": cc.method_name,
+                                "method_params": json.loads(cc.method_params) if cc.method_params else [],
+                                "create_time": cc.create_time.isoformat() if cc.create_time else None,
+                                "update_time": cc.update_time.isoformat() if cc.update_time else None
+                            }
+                            contract_callers_config.append(caller_config)
+                        
+                        component_data.update({
+                            "contract_callers": contract_callers_config
                         })
 
                 elif component.type == 'dict_mapper':

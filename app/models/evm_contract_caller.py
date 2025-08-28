@@ -25,6 +25,12 @@ class EvmContractCaller(Base):
         comment="组件ID"
     )
     
+    event_name: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="事件名称"
+    )
+    
     chain_name: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,
@@ -79,13 +85,14 @@ class EvmContractCaller(Base):
     )
     
     def __repr__(self) -> str:
-        return f"<EvmContractCaller(id={self.id}, chain_name='{self.chain_name}', contract_address='{self.contract_address}', method_name='{self.method_name}', component_id={self.component_id})>"
+        return f"<EvmContractCaller(id={self.id}, event_name='{self.event_name}', chain_name='{self.chain_name}', contract_address='{self.contract_address}', method_name='{self.method_name}', component_id={self.component_id})>"
     
     def to_dict(self) -> dict:
         """转换为字典"""
         return {
             'id': self.id,
             'component_id': self.component_id,
+            'event_name': self.event_name,
             'chain_name': self.chain_name,
             'abi_path': self.abi_path,
             'contract_address': self.contract_address,
