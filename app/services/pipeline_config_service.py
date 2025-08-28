@@ -481,9 +481,12 @@ class PipelineConfigService:
             async with database_service.get_session() as session:
                 # 更新任务状态为运行中
                 task = await session.get(PipelineTask, task_id)
-                if task:
-                    task.status = 0  # 正在运行
-                    await session.commit()
+                if not task:
+                    logger.error(f"任务不存在: task_id={task_id}")
+                    return
+                
+                task.status = 0  # 正在运行
+                await session.commit()
 
                 # 创建管道执行器并运行
                 logger.info(f"开始执行管道任务: task_id={task_id}")
@@ -500,8 +503,9 @@ class PipelineConfigService:
                 if task:
                     task.status = 1  # 成功
                     await session.commit()
-
-                logger.info(f"管道任务执行完成: task_id={task_id}")
+                    logger.info(f"管道任务执行完成: task_id={task_id}")
+                else:
+                    logger.warning(f"任务执行完成但无法更新状态，任务不存在: task_id={task_id}")
 
         except Exception as e:
             logger.error(f"管道任务执行失败: task_id={task_id}, 错误: {e}")
