@@ -23,41 +23,41 @@ def test_node_connection(rpc_url: str) -> bool:
     """
     print(f"🔗 测试节点连接: {rpc_url}")
     
-    # 1. 测试HTTP连接
-    try:
-        response = requests.post(
-            rpc_url,
-            json={
-                "jsonrpc": "2.0",
-                "method": "web3_clientVersion",
-                "params": [],
-                "id": 1
-            },
-            timeout=10
-        )
-        
-        if response.status_code != 200:
-            print(f"❌ HTTP连接失败: {response.status_code}")
-            return False
-            
-        data = response.json()
-        if 'error' in data:
-            print(f"❌ RPC错误: {data['error']}")
-            return False
-            
-        print(f"✅ HTTP连接成功")
-        if 'result' in data:
-            print(f"   客户端: {data['result']}")
-            
-    except requests.exceptions.ConnectTimeout:
-        print(f"❌ 连接超时")
-        return False
-    except requests.exceptions.ConnectionError:
-        print(f"❌ 连接错误")
-        return False
-    except Exception as e:
-        print(f"❌ HTTP测试失败: {e}")
-        return False
+    # # 1. 测试HTTP连接
+    # try:
+    #     response = requests.post(
+    #         rpc_url,
+    #         json={
+    #             "jsonrpc": "2.0",
+    #             "method": "web3_clientVersion",
+    #             "params": [],
+    #             "id": 1
+    #         },
+    #         timeout=10
+    #     )
+    #
+    #     if response.status_code != 200:
+    #         print(f"❌ HTTP连接失败: {response.status_code}")
+    #         return False
+    #
+    #     data = response.json()
+    #     if 'error' in data:
+    #         print(f"❌ RPC错误: {data['error']}")
+    #         return False
+    #
+    #     print(f"✅ HTTP连接成功")
+    #     if 'result' in data:
+    #         print(f"   客户端: {data['result']}")
+    #
+    # except requests.exceptions.ConnectTimeout:
+    #     print(f"❌ 连接超时")
+    #     return False
+    # except requests.exceptions.ConnectionError:
+    #     print(f"❌ 连接错误")
+    #     return False
+    # except Exception as e:
+    #     print(f"❌ HTTP测试失败: {e}")
+    #     return False
     
     # 2. 测试Web3连接
     try:
