@@ -1,6 +1,7 @@
 """合约事件监控服务"""
 import asyncio
 import json
+import time
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Callable
 from web3 import Web3
@@ -82,7 +83,7 @@ class ContractEventMonitor():
                 "transaction_hash": event_log.transactionHash.hex(),
                 "block_number": event_log.blockNumber,
                 "log_index": event_log.logIndex,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": int(time.time()),
                 "chain": self.chain_name,
                 "chain_id": chain_id
             }
