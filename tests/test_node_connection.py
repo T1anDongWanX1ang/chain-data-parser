@@ -24,8 +24,8 @@ def test_websocket_connection(ws_url: str) -> bool:
     print(f"🔗 测试WebSocket连接: {ws_url}")
     
     try:
-        # 使用LegacyWebSocketProvider
-        web3 = Web3(Web3.LegacyWebSocketProvider(ws_url))
+        # 使用WebsocketProvider
+        web3 = Web3(Web3.WebsocketProvider(ws_url))
         
         if web3.is_connected():
             print(f"✅ WebSocket连接成功")
