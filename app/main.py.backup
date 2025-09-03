@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 import sys
 import os
@@ -106,9 +105,6 @@ async def root():
         "version": "1.0.0"
     }
 
-
-# 挂载静态文件服务
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # 注册API路由
 app.include_router(api_router, prefix="/api/v1")

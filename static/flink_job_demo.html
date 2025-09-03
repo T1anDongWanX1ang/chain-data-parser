@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flink作业信息演示页面</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .demo-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            background-color: #fafafa;
+        }
+        .demo-section h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            color: #666;
+        }
+        .job-detail-section {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .job-item {
+            margin-bottom: 10px;
+            padding: 8px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Flink作业信息演示页面</h1>
+        
+        <!-- Step6 模拟卡片 -->
+        <div class="demo-section">
+            <h3>📋 Step6: Flink任务启动成功卡片</h3>
+            <p>模拟step6中的Flink任务启动成功卡片，点击按钮获取作业信息并添加任务详情跳转按钮。</p>
+            <button onclick="simulateStep6()">模拟Step6 - 获取作业信息</button>
+            <div class="loading" id="step6Loading">获取作业信息中...</div>
+            <div id="step6Result" class="result info" style="display: none;"></div>
+            <div id="step6Container"></div>
+        </div>
+        
+        <!-- 直接获取作业信息 -->
+        <div class="demo-section">
+            <h3>🔍 直接获取Flink作业信息</h3>
+            <p>直接调用API获取作业信息并显示详细信息。</p>
+            <button onclick="getJobInfoDirectly()">获取作业信息</button>
+            <div class="loading" id="directLoading">获取中...</div>
+            <div id="directResult" class="result" style="display: none;"></div>
+        </div>
+        
+        <!-- 自定义作业名称查询 -->
+        <div class="demo-section">
+            <h3>🎯 自定义作业名称查询</h3>
+            <input type="text" id="customJobName" placeholder="输入作业名称" value="MultiChainTokenJob" style="width: 200px; padding: 8px; margin-right: 10px;">
+            <button onclick="getCustomJobInfo()">查询指定作业</button>
+            <div class="loading" id="customLoading">查询中...</div>
+            <div id="customResult" class="result" style="display: none;"></div>
+        </div>
+    </div>
+
+    <!-- 引入工具函数 -->
+    <script src="/static/flink_job_utils.js"></script>
+    
+    <script>
+        // 显示结果
+        function showResult(elementId, data, isError = false) {
+            const element = document.getElementById(elementId);
+            element.textContent = JSON.stringify(data, null, 2);
+            element.className = `result ${isError ? 'error' : 'success'}`;
+            element.style.display = 'block';
+        }
+        
+        // 显示加载状态
+        function showLoading(elementId, show = true) {
+            document.getElementById(elementId).style.display = show ? 'block' : 'none';
+        }
+        
+        // 模拟Step6
+        async function simulateStep6() {
+            try {
+                showLoading('step6Loading', true);
+                
+                // 清空之前的结果
+                document.getElementById('step6Result').style.display = 'none';
+                document.getElementById('step6Container').innerHTML = '';
+                
+                // 获取作业信息
+                const result = await getFlinkJobInfoAndGenerateLink('MultiChainTokenJob', 'json');
+                
+                if (result.success) {
+                    const { jobs, totalJobs, jobDetailLink, flinkServerUrl } = result.data;
+                    
+                    // 显示基本信息
+                    showResult('step6Result', {
+                        message: `成功获取到 ${totalJobs} 个运行中的作业`,
+                        jobDetailLink: jobDetailLink,
+                        flinkServerUrl: flinkServerUrl
+                    });
+                    
+                    // 添加任务详情按钮到step6容器
+                    await addJobDetailButtonToStep6('step6Container', 'MultiChainTokenJob');
+                    
+                } else {
+                    showResult('step6Result', { error: result.error }, true);
+                }
+                
+            } catch (error) {
+                showResult('step6Result', { error: error.message }, true);
+            } finally {
+                showLoading('step6Loading', false);
+            }
+        }
+        
+        // 直接获取作业信息
+        async function getJobInfoDirectly() {
+            try {
+                showLoading('directLoading', true);
+                
+                const result = await getFlinkJobInfoAndGenerateLink('MultiChainTokenJob', 'json');
+                
+                if (result.success) {
+                    showResult('directResult', result.data);
+                } else {
+                    showResult('directResult', { error: result.error }, true);
+                }
+                
+            } catch (error) {
+                showResult('directResult', { error: error.message }, true);
+            } finally {
+                showLoading('directLoading', false);
+            }
+        }
+        
+        // 获取自定义作业信息
+        async function getCustomJobInfo() {
+            try {
+                const jobName = document.getElementById('customJobName').value.trim();
+                if (!jobName) {
+                    showResult('customResult', { error: '请输入作业名称' }, true);
+                    return;
+                }
+                
+                showLoading('customLoading', true);
+                
+                const result = await getFlinkJobInfoAndGenerateLink(jobName, 'json');
+                
+                if (result.success) {
+                    showResult('customResult', result.data);
+                } else {
+                    showResult('customResult', { error: result.error }, true);
+                }
+                
+            } catch (error) {
+                showResult('customResult', { error: error.message }, true);
+            } finally {
+                showLoading('customLoading', false);
+            }
+        }
+        
+        // 页面加载时自动执行一次演示
+        window.onload = function() {
+            console.log('Flink作业信息演示页面已加载');
+            console.log('可用的函数:', Object.keys(window).filter(key => key.includes('Flink') || key.includes('Job')));
+        };
+    </script>
+</body>
+</html>

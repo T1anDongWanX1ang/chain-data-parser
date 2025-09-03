@@ -875,12 +875,12 @@ async def execute_job_details_script(job_name: Optional[str] = None, output_form
                     "error": f"脚本无执行权限且无法修改: {str(e)}"
                 }
         
-        # 构建命令参数 - 脚本需要按顺序传递: job_name output_format
+        # 构建命令参数
         cmd = [script_path]
-        # 始终传递作业名称，如果未指定则使用默认值
-        cmd.append(job_name if job_name else "MultiChainTokenJob")
-        # 传递输出格式
-        cmd.append(output_format)
+        if job_name:
+            cmd.append(job_name)
+        if output_format:
+            cmd.append(output_format)
         
         logger.info(f"执行Flink作业详情查询: {' '.join(cmd)}")
         
@@ -983,39 +983,12 @@ async def get_flink_job_info(
                 data=response_data
             )
         else:
-            # 检查是否是因为没找到匹配的运行中作业而失败
-            return_code = result.get("return_code", -1)
-            stdout = result.get("stdout", "")
-            
-            # 如果返回码是1且输出包含"没有找到"相关信息，则认为是正常情况（没有运行中的作业）
-            if return_code == 1 and ("没有找到" in stdout or "共找到 0 个" in stdout):
-                response_data = {
-                    "jobs": [],
-                    "total_jobs": 0,
-                    "metadata": {
-                        "job_name_filter": job_name,
-                        "output_format": output_format,
-                        "search_status": "no_running_jobs_found"
-                    },
-                    "execution_info": {
-                        "command": result["command"],
-                        "execution_time": result["execution_time"],
-                        "return_code": result["return_code"]
-                    }
-                }
-                
-                return FlinkJobInfoResponse(
-                    success=True,
-                    message=f"没有找到名称包含 '{job_name}' 且状态为RUNNING的作业",
-                    data=response_data
-                )
-            
-            # 其他类型的执行失败，返回错误信息用于调试
+            # 执行失败，但仍返回部分信息用于调试
             error_data = {
                 "error": result.get("error", "未知错误"),
-                "return_code": return_code,
+                "return_code": result.get("return_code", -1),
                 "stderr": result.get("stderr", ""),
-                "stdout": stdout[:500],  # 限制输出长度
+                "stdout": result.get("stdout", "")[:500],  # 限制输出长度
                 "command": result.get("command", ""),
                 "execution_time": result.get("execution_time", "")
             }

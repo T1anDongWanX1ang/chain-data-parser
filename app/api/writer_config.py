@@ -26,6 +26,13 @@ class SaveIngestionConfigResponse(BaseModel):
     data: Dict[str, Any] = Field(default_factory=dict, description="返回数据")
 
 
+class GetComponentConfigResponse(BaseModel):
+    """获取组件配置响应模型"""
+    success: bool = Field(..., description="操作是否成功")
+    message: str = Field(..., description="操作消息")
+    data: Dict[str, Any] = Field(default_factory=dict, description="模块内容")
+
+
 @router.post("/save-ingestion-config", response_model=SaveIngestionConfigResponse, summary="保存数据摄取配置")
 async def save_ingestion_config(
     request: SaveIngestionConfigRequest,
@@ -106,4 +113,54 @@ async def save_ingestion_config(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"保存配置失败: {str(e)}"
+        )
+
+
+@router.get("/component/{component_id}/config", response_model=GetComponentConfigResponse, summary="获取组件配置")
+async def get_component_config(
+    component_id: int,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """
+    根据组件ID获取配置信息
+    
+    Args:
+        component_id: 组件ID
+        session: 数据库会话
+    
+    Returns:
+        GetComponentConfigResponse: 包含module_content的配置信息
+    """
+    try:
+        logger.info(f"获取组件配置: component_id={component_id}")
+        
+        # 查询配置记录
+        result = await session.execute(
+            select(WriterDbConfig).where(WriterDbConfig.component_id == component_id)
+        )
+        config = result.scalar_one_or_none()
+        
+        if not config:
+            logger.warning(f"组件配置不存在: component_id={component_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"组件ID {component_id} 的配置不存在"
+            )
+        
+        logger.info(f"获取组件配置成功: component_id={component_id}")
+        
+        return GetComponentConfigResponse(
+            success=True,
+            message="获取配置成功",
+            data=config.module_content or {}
+        )
+        
+    except HTTPException:
+        # 重新抛出HTTP异常
+        raise
+    except Exception as e:
+        logger.error(f"获取组件配置失败: component_id={component_id}, error={str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取配置失败: {str(e)}"
         ) 

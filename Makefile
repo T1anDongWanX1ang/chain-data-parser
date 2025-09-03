@@ -14,6 +14,9 @@ help:
 	@echo "  make test-flink    - 测试start-flink-job接口（异步）"
 	@echo "  make test-flink-sync - 测试start-flink-job接口（同步，含作业信息）"
 	@echo "  make test-flink-status - 测试flink-job/status接口"
+	@echo "  make flink-jobs    - 查询运行中的MultiChainTokenJob作业详情"
+	@echo "  make flink-jobs-json - 查询运行中的MultiChainTokenJob作业详情（JSON）"
+	@echo "  make flink-jobs-all - 查询所有运行中的作业详情"
 	@echo ""
 
 # 安装依赖
@@ -68,4 +71,19 @@ test-flink-sync:
 # 测试Flink状态接口	
 test-flink-status:
 	@echo "🧪 测试flink-job/status接口..."
-	@curl -s -X GET "http://localhost:8000/api/v1/flink-job/status" -H "accept: application/json" | python3 -m json.tool 
+	@curl -s -X GET "http://localhost:8000/api/v1/flink-job/status" -H "accept: application/json" | python3 -m json.tool
+
+# 查询运行中的MultiChainTokenJob作业详情（友好格式）
+flink-jobs:
+	@echo "🔍 查询运行中的MultiChainTokenJob作业详情..."
+	@cd app && ./get-flink-job-details.sh MultiChainTokenJob pretty
+
+# 查询运行中的MultiChainTokenJob作业详情（JSON格式）
+flink-jobs-json:
+	@echo "🔍 查询运行中的MultiChainTokenJob作业详情（JSON格式）..."
+	@cd app && ./get-flink-job-details.sh MultiChainTokenJob json
+
+# 查询所有运行中的作业详情
+flink-jobs-all:
+	@echo "🔍 查询所有运行中的作业详情..."
+	@cd app && ./get-flink-job-details.sh "" pretty 
