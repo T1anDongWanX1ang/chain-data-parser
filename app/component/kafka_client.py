@@ -117,7 +117,8 @@ class KafkaClient:
             # 如果启用同步发送，等待结果
             if self.config.sync_send:
                 record_metadata = future.get(timeout=self.config.send_timeout)
-                logger.info(f"消息发送成功 - 主题: {topic}, 分区: {record_metadata.partition}, 偏移: {record_metadata.offset},数据:{data}")
+                logger.info(f"✅ Kafka消息发送成功 - 主题: {topic}, 分区: {record_metadata.partition}, 偏移: {record_metadata.offset}")
+                logger.debug(f"实际发送的消息内容: {message}")
             
             self.sent_count += 1
             
