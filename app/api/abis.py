@@ -19,6 +19,7 @@ class AbiCreateRequest(BaseModel):
     """ABI创建请求模型"""
     contract_address: str = Field(..., description="合约地址", min_length=42, max_length=42)
     chain_name: str = Field(..., description="链名称", min_length=1, max_length=32)
+    contract_name: Optional[str] = Field(None, description="合约名称（用户定义的可读名称）", max_length=255)
     abi_content: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = Field(None, description="ABI JSON内容")
     source_type: str = Field(default="manual", description="来源类型（manual: 手动上传, auto: 自动获取）")
     
@@ -52,6 +53,7 @@ class AbiAutoFetchRequest(BaseModel):
     """ABI自动获取请求模型"""
     contract_address: str = Field(..., description="合约地址", min_length=42, max_length=42)
     chain_name: str = Field(..., description="链名称", min_length=1, max_length=32)
+    contract_name: Optional[str] = Field(None, description="合约名称（用户定义的可读名称）", max_length=255)
     check_proxy: bool = Field(default=True, description="是否检测代理合约并获取实现合约的ABI")
     
     @validator('contract_address')
@@ -82,6 +84,7 @@ class AbiResponse(BaseModel):
     id: int = Field(..., description="记录ID")
     contract_address: str = Field(..., description="合约地址")
     chain_name: str = Field(..., description="链名称")
+    contract_name: Optional[str] = Field(None, description="合约名称（用户定义的可读名称）")
     abi_content: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = Field(None, description="ABI JSON内容")
     file_path: Optional[str] = Field(None, description="ABI文件路径")
     source_type: str = Field(..., description="来源类型")
@@ -179,6 +182,7 @@ async def create_abi(
         abi_record = ContractAbi(
             contract_address=request.contract_address,
             chain_name=request.chain_name,
+            contract_name=request.contract_name,
             abi_content=json.dumps(abi_content, ensure_ascii=False),
             file_path=file_path,
             source_type=source_type
@@ -262,6 +266,7 @@ async def auto_fetch_abi(
         abi_record = ContractAbi(
             contract_address=request.contract_address,
             chain_name=request.chain_name,
+            contract_name=request.contract_name,
             abi_content=json.dumps(abi_list, ensure_ascii=False),
             file_path=file_path,
             source_type="auto"
@@ -337,6 +342,7 @@ async def get_abi_by_address(
             id=abi_record.id,
             contract_address=abi_record.contract_address,
             chain_name=abi_record.chain_name,
+            contract_name=abi_record.contract_name,
             abi_content=abi_content,
             file_path=abi_record.file_path,
             source_type=abi_record.source_type,
@@ -398,6 +404,7 @@ async def list_abis(
                 id=record.id,
                 contract_address=record.contract_address,
                 chain_name=record.chain_name,
+                contract_name=record.contract_name,
                 abi_content=abi_content,
                 file_path=record.file_path,
                 source_type=record.source_type,
@@ -559,6 +566,7 @@ async def delete_abi(
 async def upload_abi_file(
     contract_address: str = Query(..., description="合约地址"),
     chain_name: str = Query(..., description="链名称"),
+    contract_name: Optional[str] = Query(None, description="合约名称（用户定义的可读名称）"),
     file: UploadFile = File(..., description="ABI JSON文件"),
     db: AsyncSession = Depends(get_db_session)
 ):
@@ -620,6 +628,7 @@ async def upload_abi_file(
         abi_record = ContractAbi(
             contract_address=contract_address,
             chain_name=chain_name,
+            contract_name=contract_name,
             abi_content=json.dumps(abi_content, ensure_ascii=False),
             file_path=file_path,
             source_type="manual"

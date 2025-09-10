@@ -32,6 +32,23 @@ class BlockchainSettings(BaseSettings):
     bsc_rpc_url: str = Field(default="https://bsc-dataseed.binance.org/", alias="BSC_RPC_URL")
     polygon_rpc_url: str = Field(default="https://polygon-rpc.com/", alias="POLYGON_RPC_URL")
     solana_rpc_url: str = Field(default="https://api.mainnet-beta.solana.com", alias="SOLANA_RPC_URL")
+    
+    # 区块链浏览器API密钥
+    etherscan_api_key: Optional[str] = Field(default=None, alias="ETHERSCAN_API_KEY")
+    bscscan_api_key: Optional[str] = Field(default=None, alias="BSCSCAN_API_KEY")
+    polygonscan_api_key: Optional[str] = Field(default=None, alias="POLYGONSCAN_API_KEY")
+    arbiscan_api_key: Optional[str] = Field(default=None, alias="ARBISCAN_API_KEY")
+    optimism_api_key: Optional[str] = Field(default=None, alias="OPTIMISM_API_KEY")
+    
+    # 网络代理配置
+    http_proxy: Optional[str] = Field(default=None, alias="HTTP_PROXY")
+    https_proxy: Optional[str] = Field(default=None, alias="HTTPS_PROXY")
+    
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore"
+    }
 
 
 class APISettings(BaseSettings):

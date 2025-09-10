@@ -29,6 +29,12 @@ class ContractAbi(Base, TimestampMixin):
         comment="链名称（如：ethereum, bsc, polygon）"
     )
     
+    contract_name: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="合约名称（用户定义的可读名称）"
+    )
+    
     abi_content: Mapped[Optional[str]] = mapped_column(
         Text,
         nullable=True,
@@ -64,6 +70,7 @@ class ContractAbi(Base, TimestampMixin):
             'id': self.id,
             'contract_address': self.contract_address,
             'chain_name': self.chain_name,
+            'contract_name': self.contract_name,
             'abi_content': self.abi_content,
             'file_path': self.file_path,
             'source_type': self.source_type,

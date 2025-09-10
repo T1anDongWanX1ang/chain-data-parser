@@ -9,6 +9,7 @@ from .kafka_producer import KafkaProducer
 from .dict_mapper import DictMapper
 from .pipeline_classification import PipelineClassification
 from .writer_db_config import WriterDbConfig
+from .contract_abi import ContractAbi
 
 __all__ = [
     "Base",
@@ -20,5 +21,6 @@ __all__ = [
     "KafkaProducer",
     "DictMapper",
     "PipelineClassification",
-    "WriterDbConfig"
+    "WriterDbConfig",
+    "ContractAbi"
 ]
