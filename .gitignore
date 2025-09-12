@@ -1,2 +1,7 @@
 __pycache__/
 .env
+
+# 日志文件
+logs/
+app/logs/
+*.log
