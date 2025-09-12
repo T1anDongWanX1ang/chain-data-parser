@@ -191,6 +191,22 @@ class PipelineClassificationUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, description="分类名称", max_length=255)
 
 
+class TransformPreviewRequest(BaseModel):
+    """转化器预览请求模型"""
+    transformer: str = Field(..., description="转化器名称")
+    source_value: str = Field(..., description="源值")
+    context: Optional[Dict[str, Any]] = Field(None, description="上下文数据（如decimals字段）")
+
+
+class TransformPreviewResponse(BaseModel):
+    """转化器预览响应模型"""
+    success: bool = Field(..., description="是否成功")
+    message: str = Field(..., description="响应消息")
+    source_value: str = Field(..., description="原始值")
+    transformed_value: str = Field(..., description="转换后的值")
+    transformer: str = Field(..., description="使用的转化器")
+
+
 class PipelineClassificationItem(BaseModel):
     """管道分类项模型"""
     id: int = Field(..., description="分类ID")
@@ -1296,4 +1312,88 @@ async def delete_pipeline(
         )
 
 
+
+
+
+@router.post("/transform/preview", response_model=TransformPreviewResponse, summary="转化器预览")
+async def preview_transform(
+    request: TransformPreviewRequest
+):
+    """
+    转化器预览
+    
+    使用指定的转化器对输入值进行转换，返回转换结果。
+    支持所有内置转化器，包括需要上下文的转化器（如decimal_normalize_with_field）。
+    
+    Args:
+        request: 包含转化器名称、源值和上下文的请求体
+    
+    Returns:
+        TransformPreviewResponse: 转换结果
+    """
+    try:
+        from app.component.dict_mapper import BuiltinTransformers, CommonMappingConfigs
+        import re
+        
+        transformer = request.transformer
+        source_value = request.source_value
+        context = request.context or {}
+        
+        # 获取转化器配置
+        config = CommonMappingConfigs.blockchain_config()
+        transformers = config.transformers
+        
+        transformed_value = source_value  # 默认值
+        
+        # 处理特殊的decimal_normalize格式
+        if transformer.startswith("decimal_normalize(") and transformer.endswith(")"):
+            # 提取decimals参数
+            match = re.match(r"decimal_normalize\((\d+)\)", transformer)
+            if match:
+                decimals = int(match.group(1))
+                transformed_value = BuiltinTransformers.decimal_normalize(source_value, decimals)
+        elif transformer == "decimal_normalize_with_field":
+            # 需要从上下文获取decimals值
+            decimals_field = context.get("decimals_field", "decimals")
+            transformed_value = BuiltinTransformers.decimal_normalize_with_field(
+                context, source_value, decimals_field
+            )
+        elif transformer in transformers:
+            # 使用内置转化器
+            transformer_func = transformers[transformer]
+            
+            # 检查是否需要额外参数
+            if transformer == "format_timestamp":
+                format_str = context.get("format_str", "%Y-%m-%d %H:%M:%S")
+                transformed_value = BuiltinTransformers.format_timestamp(source_value, format_str)
+            elif transformer == "format_amount":
+                decimals = context.get("decimals", 18)
+                transformed_value = BuiltinTransformers.format_amount(source_value, decimals)
+            else:
+                # 简单转化器，直接调用
+                transformed_value = transformer_func(source_value)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"不支持的转化器: {transformer}"
+            )
+        
+        logger.info(f"转化器预览成功: {transformer}, {source_value} -> {transformed_value}")
+        
+        return TransformPreviewResponse(
+            success=True,
+            message="转换成功",
+            source_value=source_value,
+            transformed_value=str(transformed_value),
+            transformer=transformer
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"转化器预览失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"转换失败: {str(e)}"
+        )
 

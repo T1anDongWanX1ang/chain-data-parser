@@ -1,0 +1,129 @@
+{
+  "pipeline_name": "字典映射器测试管道",
+  "description": "仅测试字典映射器功能，避免外部依赖",
+  "classification_id": 1,
+  "components": [
+    {
+      "name": "模拟数据源",
+      "type": "event_monitor",
+      "chain_name": "ethereum",
+      "contract_address": "0x1234567890123456789012345678901234567890",
+      "abi_path": "abis/erc20.json",
+      "events_to_monitor": ["Transfer"]
+    },
+    {
+      "name": "多事件映射器",
+      "type": "dict_mapper",
+      "dict_mappers": [
+        {
+          "event_name": "Transfer",
+          "mapping_rules": [
+            {
+              "source_key": "blockNumber",
+              "target_key": "block_number",
+              "transformer": "to_int",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "transactionHash",
+              "target_key": "tx_hash",
+              "transformer": "to_lowercase",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "logIndex",
+              "target_key": "log_index",
+              "transformer": "to_int",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "from",
+              "target_key": "sender_address",
+              "transformer": "to_lowercase",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "to",
+              "target_key": "receiver_address",
+              "transformer": "to_lowercase",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "value",
+              "target_key": "transfer_amount_wei",
+              "transformer": null,
+              "condition": null,
+              "default_value": "0"
+            },
+            {
+              "source_key": "value",
+              "target_key": "transfer_amount_ether",
+              "transformer": "wei_to_ether",
+              "condition": null,
+              "default_value": "0"
+            }
+          ]
+        },
+        {
+          "event_name": "Approval",
+          "mapping_rules": [
+            {
+              "source_key": "blockNumber",
+              "target_key": "block_number",
+              "transformer": "to_int",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "transactionHash",
+              "target_key": "tx_hash",
+              "transformer": "to_lowercase",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "logIndex",
+              "target_key": "log_index",
+              "transformer": "to_int",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "owner",
+              "target_key": "token_owner",
+              "transformer": "to_lowercase",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "spender",
+              "target_key": "approved_spender",
+              "transformer": "to_lowercase",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "value",
+              "target_key": "approved_amount_wei",
+              "transformer": null,
+              "condition": null,
+              "default_value": "0"
+            },
+            {
+              "source_key": "value",
+              "target_key": "approved_amount_ether",
+              "transformer": "wei_to_ether",
+              "condition": null,
+              "default_value": "0"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

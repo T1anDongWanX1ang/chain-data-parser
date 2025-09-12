@@ -1,0 +1,82 @@
+{
+  "pipeline_name": "链ID转换示例管道",
+  "description": "展示如何使用 chain_name_to_chain_id 转换器",
+  "classification_id": 1,
+  "components": [
+    {
+      "name": "事件监控器",
+      "type": "event_monitor",
+      "chain_name": "ethereum",
+      "contract_address": "0xA0b86a33E6441E6C8F6f4c34E7C3F9844C7b8b7a",
+      "abi_path": "abis/erc20.json",
+      "events_to_monitor": ["Transfer"]
+    },
+    {
+      "name": "链ID映射器",
+      "type": "dict_mapper",
+      "dict_mappers": [
+        {
+          "event_name": "Transfer",
+          "mapping_rules": [
+            {
+              "source_key": "chain",
+              "target_key": "chain_name",
+              "transformer": "to_string",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "chain",
+              "target_key": "chain_id",
+              "transformer": "chain_name_to_chain_id",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "block_number",
+              "target_key": "block_number",
+              "transformer": "to_int",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "transaction_hash",
+              "target_key": "tx_hash",
+              "transformer": "to_lowercase",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "contract_address",
+              "target_key": "contract_address",
+              "transformer": "format_address",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "args.from",
+              "target_key": "from_address",
+              "transformer": "format_address",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "args.to",
+              "target_key": "to_address",
+              "transformer": "format_address",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "args.value",
+              "target_key": "amount_wei",
+              "transformer": "to_string",
+              "condition": null,
+              "default_value": "0"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

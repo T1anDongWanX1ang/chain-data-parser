@@ -1,0 +1,184 @@
+{
+  "pipeline_update_examples": {
+    "description": "管道更新接口示例",
+    "endpoint": "PUT /api/v1/pipeline/{pipeline_id}",
+    "examples": [
+      {
+        "name": "update_pipeline_name_only",
+        "description": "只更新管道名称",
+        "request": {
+          "name": "新的管道名称"
+        },
+        "curl_example": "curl -X PUT 'http://localhost:8000/api/v1/pipeline/1' -H 'Content-Type: application/json' -d '{\"name\": \"新的管道名称\"}'"
+      },
+      {
+        "name": "update_pipeline_description_only",
+        "description": "只更新管道描述",
+        "request": {
+          "description": "新的管道描述信息"
+        },
+        "curl_example": "curl -X PUT 'http://localhost:8000/api/v1/pipeline/1' -H 'Content-Type: application/json' -d '{\"description\": \"新的管道描述信息\"}'"
+      },
+      {
+        "name": "update_pipeline_both",
+        "description": "同时更新名称和描述",
+        "request": {
+          "name": "完整的管道名称",
+          "description": "完整的管道描述信息"
+        },
+        "curl_example": "curl -X PUT 'http://localhost:8000/api/v1/pipeline/1' -H 'Content-Type: application/json' -d '{\"name\": \"完整的管道名称\", \"description\": \"完整的管道描述信息\"}'"
+      },
+      {
+        "name": "clear_description",
+        "description": "清空管道描述",
+        "request": {
+          "description": ""
+        },
+        "curl_example": "curl -X PUT 'http://localhost:8000/api/v1/pipeline/1' -H 'Content-Type: application/json' -d '{\"description\": \"\"}'"
+      }
+    ],
+    "response_format": {
+      "success": true,
+      "message": "修改管道成功",
+      "data": {
+        "id": 1,
+        "classification_id": 1,
+        "name": "更新后的管道名称",
+        "description": "更新后的管道描述",
+        "create_time": "2025-08-28T15:30:00.000000",
+        "update_time": "2025-08-28T15:35:00.000000"
+      }
+    },
+    "error_scenarios": [
+      {
+        "scenario": "管道不存在",
+        "response": {
+          "detail": "管道不存在: 999"
+        },
+        "status_code": 404
+      },
+      {
+        "scenario": "管道已被删除",
+        "response": {
+          "detail": "管道已被删除，无法修改"
+        },
+        "status_code": 400
+      },
+      {
+        "scenario": "没有提供更新字段",
+        "response": {
+          "detail": "没有提供要更新的字段"
+        },
+        "status_code": 400
+      }
+    ]
+  },
+  "classification_update_examples": {
+    "description": "分类更新接口示例",
+    "endpoint": "PUT /api/v1/pipeline/classification/{classification_id}",
+    "examples": [
+      {
+        "name": "update_classification_name_only",
+        "description": "只更新分类名称",
+        "request": {
+          "name": "新的分类名称"
+        },
+        "curl_example": "curl -X PUT 'http://localhost:8000/api/v1/pipeline/classification/1' -H 'Content-Type: application/json' -d '{\"name\": \"新的分类名称\"}'"
+      },
+      {
+        "name": "update_parent_id_only",
+        "description": "只更新父级ID",
+        "request": {
+          "parent_id": 2
+        },
+        "curl_example": "curl -X PUT 'http://localhost:8000/api/v1/pipeline/classification/1' -H 'Content-Type: application/json' -d '{\"parent_id\": 2}'"
+      },
+      {
+        "name": "update_classification_both",
+        "description": "同时更新名称和父级ID",
+        "request": {
+          "parent_id": 2,
+          "name": "移动到新父级的分类"
+        },
+        "curl_example": "curl -X PUT 'http://localhost:8000/api/v1/pipeline/classification/1' -H 'Content-Type: application/json' -d '{\"parent_id\": 2, \"name\": \"移动到新父级的分类\"}'"
+      },
+      {
+        "name": "set_as_root_category",
+        "description": "设置为根分类",
+        "request": {
+          "parent_id": null
+        },
+        "curl_example": "curl -X PUT 'http://localhost:8000/api/v1/pipeline/classification/1' -H 'Content-Type: application/json' -d '{\"parent_id\": null}'"
+      }
+    ],
+    "response_format": {
+      "success": true,
+      "message": "修改分类成功",
+      "data": {
+        "id": 1,
+        "parent_id": 2,
+        "name": "更新后的分类名称",
+        "create_time": "2025-08-28T15:30:00.000000"
+      }
+    },
+    "error_scenarios": [
+      {
+        "scenario": "分类不存在",
+        "response": {
+          "detail": "分类不存在: 999"
+        },
+        "status_code": 404
+      },
+      {
+        "scenario": "分类已被删除",
+        "response": {
+          "detail": "分类已被删除，无法修改"
+        },
+        "status_code": 400
+      },
+      {
+        "scenario": "没有提供更新字段",
+        "response": {
+          "detail": "没有提供要更新的字段"
+        },
+        "status_code": 400
+      }
+    ]
+  },
+  "validation_rules": {
+    "pipeline": {
+      "name": {
+        "required": false,
+        "max_length": 255,
+        "trim_whitespace": true,
+        "empty_string_handling": "ignored"
+      },
+      "description": {
+        "required": false,
+        "max_length": 255,
+        "trim_whitespace": true,
+        "empty_string_handling": "set_to_null"
+      }
+    },
+    "classification": {
+      "name": {
+        "required": false,
+        "max_length": 255,
+        "trim_whitespace": true,
+        "empty_string_handling": "ignored"
+      },
+      "parent_id": {
+        "required": false,
+        "type": "integer_or_null",
+        "null_handling": "set_as_root_category"
+      }
+    }
+  },
+  "notes": [
+    "所有更新接口都会检查记录是否已被逻辑删除",
+    "管道更新会自动更新 update_time 字段",
+    "空字符串会被忽略或转换为 null，具体取决于字段类型",
+    "至少需要提供一个有效的更新字段",
+    "所有字符串字段都会自动去除前后空白字符"
+  ]
+}

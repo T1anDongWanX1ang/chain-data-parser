@@ -1,0 +1,126 @@
+{
+  "pipeline_name": "多合约调用器示例管道",
+  "description": "展示如何使用多个合约调用器根据 event_name 调用不同的合约方法",
+  "classification_id": 1,
+  "components": [
+    {
+      "name": "事件监控器",
+      "type": "event_monitor",
+      "chain_name": "ethereum",
+      "contract_address": "0xA0b86a33E6441E6C8F6f4c34E7C3F9844C7b8b7a",
+      "abi_path": "abis/erc20.json",
+      "events_to_monitor": ["Transfer", "Approval"]
+    },
+    {
+      "name": "多合约调用器",
+      "type": "contract_caller",
+      "contract_callers": [
+        {
+          "event_name": "Transfer",
+          "chain_name": "ethereum",
+          "abi_path": "abis/erc20.json",
+          "contract_address": "0xA0b86a33E6441E6C8F6f4c34E7C3F9844C7b8b7a",
+          "method_name": "balanceOf",
+          "method_params": ["args.to"]
+        },
+        {
+          "event_name": "Transfer",
+          "chain_name": "ethereum",
+          "abi_path": "abis/erc20.json",
+          "contract_address": "0xA0b86a33E6441E6C8F6f4c34E7C3F9844C7b8b7a",
+          "method_name": "name",
+          "method_params": []
+        },
+        {
+          "event_name": "Approval",
+          "chain_name": "ethereum",
+          "abi_path": "abis/erc20.json",
+          "contract_address": "0xA0b86a33E6441E6C8F6f4c34E7C3F9844C7b8b7a",
+          "method_name": "allowance",
+          "method_params": ["args.owner", "args.spender"]
+        }
+      ]
+    },
+    {
+      "name": "数据映射器",
+      "type": "dict_mapper",
+      "dict_mappers": [
+        {
+          "event_name": "Transfer",
+          "mapping_rules": [
+            {
+              "source_key": "event_name",
+              "target_key": "event_type",
+              "transformer": "to_string"
+            },
+            {
+              "source_key": "chain_id",
+              "target_key": "network_id",
+              "transformer": "to_int"
+            },
+            {
+              "source_key": "balanceOf",
+              "target_key": "recipient_balance",
+              "transformer": "to_string"
+            },
+            {
+              "source_key": "name",
+              "target_key": "token_name",
+              "transformer": "to_string"
+            },
+            {
+              "source_key": "args.from",
+              "target_key": "sender_address",
+              "transformer": "format_address"
+            },
+            {
+              "source_key": "args.to",
+              "target_key": "recipient_address",
+              "transformer": "format_address"
+            },
+            {
+              "source_key": "args.value",
+              "target_key": "transfer_amount",
+              "transformer": "to_string"
+            }
+          ]
+        },
+        {
+          "event_name": "Approval",
+          "mapping_rules": [
+            {
+              "source_key": "event_name",
+              "target_key": "event_type",
+              "transformer": "to_string"
+            },
+            {
+              "source_key": "chain_id",
+              "target_key": "network_id",
+              "transformer": "to_int"
+            },
+            {
+              "source_key": "allowance",
+              "target_key": "approved_amount",
+              "transformer": "to_string"
+            },
+            {
+              "source_key": "args.owner",
+              "target_key": "owner_address",
+              "transformer": "format_address"
+            },
+            {
+              "source_key": "args.spender",
+              "target_key": "spender_address",
+              "transformer": "format_address"
+            },
+            {
+              "source_key": "args.value",
+              "target_key": "approval_amount",
+              "transformer": "to_string"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

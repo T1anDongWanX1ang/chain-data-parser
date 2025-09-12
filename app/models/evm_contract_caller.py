@@ -49,6 +49,19 @@ class EvmContractCaller(Base):
         comment="合约地址"
     )
     
+    # contract_address_source: Mapped[Optional[str]] = mapped_column(
+    #     String(10),
+    #     nullable=True,
+    #     default='static',
+    #     comment="合约地址来源：static=固定地址，dynamic=来自JSON字段"
+    # )
+    
+    # contract_address_field: Mapped[Optional[str]] = mapped_column(
+    #     String(255),
+    #     nullable=True,
+    #     comment="动态合约地址字段名"
+    # )
+    
     method_name: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,
@@ -96,6 +109,8 @@ class EvmContractCaller(Base):
             'chain_name': self.chain_name,
             'abi_path': self.abi_path,
             'contract_address': self.contract_address,
+            # 'contract_address_source': self.contract_address_source,
+            # 'contract_address_field': self.contract_address_field,
             'method_name': self.method_name,
             'method_params': self.method_params,
             'create_time': self.create_time.isoformat() if self.create_time else None,

@@ -137,7 +137,7 @@ class ContractMethodCaller:
                 "error": str(e)
             }
             
-            self._print_result(error_data)
+            logger.error(f"调用失败详情: {error_data}")
             return error_data
 
     def get_contract_info(self) -> Dict[str, Any]:

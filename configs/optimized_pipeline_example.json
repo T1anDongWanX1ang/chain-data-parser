@@ -1,0 +1,152 @@
+{
+  "pipeline_name": "优化版ERC20事件处理管道",
+  "description": "演示优化后的管道执行器功能，支持多条dict_mapper配置",
+  "classification_id": 1,
+  "components": [
+    {
+      "name": "step1",
+      "type": "event_monitor",
+      "chain_name": "ethereum",
+      "contract_address": "0xA0b86a33E6441c8C06DD2c1c1e3e5C2b8b6C6E5D",
+      "abi_path": "abis/erc20.json",
+      "events_to_monitor": ["Transfer", "Approval"],
+      "mode": "realtime",
+      "output_format": "detailed",
+      "poll_interval": 2.0
+    },
+    {
+      "name": "step2",
+      "type": "contract_caller",
+      "chain_name": "ethereum",
+      "contract_address": "0xA0b86a33E6441c8C06DD2c1c1e3e5C2b8b6C6E5D",
+      "abi_path": "abis/erc20.json",
+      "method_name": "decimals",
+      "method_params": []
+    },
+    {
+      "name": "step3",
+      "type": "dict_mapper",
+      "dict_mappers": [
+        {
+          "event_name": "Transfer",
+          "mapping_rules": [
+            {
+              "source_key": "blockNumber",
+              "target_key": "block_number",
+              "transformer": "to_int",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "transactionHash",
+              "target_key": "tx_hash",
+              "transformer": "to_lowercase",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "logIndex",
+              "target_key": "log_index",
+              "transformer": "to_int",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "from",
+              "target_key": "sender_address",
+              "transformer": "to_lowercase",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "to",
+              "target_key": "receiver_address",
+              "transformer": "to_lowercase",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "value",
+              "target_key": "transfer_amount_wei",
+              "transformer": null,
+              "condition": null,
+              "default_value": "0"
+            },
+            {
+              "source_key": "value",
+              "target_key": "transfer_amount_ether",
+              "transformer": "wei_to_ether",
+              "condition": null,
+              "default_value": "0"
+            }
+          ]
+        },
+        {
+          "event_name": "Approval",
+          "mapping_rules": [
+            {
+              "source_key": "blockNumber",
+              "target_key": "block_number",
+              "transformer": "to_int",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "transactionHash",
+              "target_key": "tx_hash",
+              "transformer": "to_lowercase",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "logIndex",
+              "target_key": "log_index",
+              "transformer": "to_int",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "owner",
+              "target_key": "token_owner",
+              "transformer": "to_lowercase",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "spender",
+              "target_key": "approved_spender",
+              "transformer": "to_lowercase",
+              "condition": null,
+              "default_value": null
+            },
+            {
+              "source_key": "value",
+              "target_key": "approved_amount_wei",
+              "transformer": null,
+              "condition": null,
+              "default_value": "0"
+            },
+            {
+              "source_key": "value",
+              "target_key": "approved_amount_ether",
+              "transformer": "wei_to_ether",
+              "condition": null,
+              "default_value": "0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "step4",
+      "type": "kafka_producer",
+      "bootstrap_servers": "localhost:9092",
+      "topic": "erc20_events_processed",
+      "acks": 1,
+      "sync_send": false,
+      "retries": 3,
+      "batch_size": 16384,
+      "linger_ms": 100
+    }
+  ]
+}

@@ -8,6 +8,7 @@ from enum import Enum
 
 from app.config import settings
 from app.utils.contract_utils import ProxyContractDetector, get_contract_implementation_address
+from web3 import Web3
 
 
 class ChainType(Enum):
@@ -51,17 +52,48 @@ class BlockchainExplorerService:
         }
     }
     
-    def __init__(self, timeout: int = 60, max_retries: int = 3):
+    def __init__(self, chain_type: Optional[ChainType] = None, timeout: int = 60, max_retries: int = 3):
         """
         初始化区块链浏览器服务
         
         Args:
+            chain_type: 区块链类型
             timeout: HTTP请求超时时间（秒）- 增加到60秒以应对慢网络
             max_retries: 最大重试次数
         """
+        self.chain_type = chain_type
         self.timeout = timeout
         self.max_retries = max_retries
         self.session: Optional[aiohttp.ClientSession] = None
+        self.web3_instance: Optional[Web3] = None
+    
+    @classmethod
+    def create_for_chain(cls, chain_name: str) -> Optional['BlockchainExplorerService']:
+        """
+        根据区块链名称创建服务实例
+        
+        Args:
+            chain_name: 区块链名称字符串
+            
+        Returns:
+            BlockchainExplorerService实例或None
+        """
+        try:
+            # 尝试将字符串转换为ChainType枚举
+            chain_type = None
+            for chain in ChainType:
+                if chain.value.lower() == chain_name.lower():
+                    chain_type = chain
+                    break
+            
+            if chain_type:
+                return cls(chain_type=chain_type)
+            else:
+                logger.warning(f"不支持的区块链: {chain_name}")
+                return None
+        except Exception as e:
+            logger.error(f"创建区块链服务失败: {e}")
+            return None
     
     async def _get_session(self) -> aiohttp.ClientSession:
         """获取或创建HTTP会话"""
@@ -391,6 +423,27 @@ class BlockchainExplorerService:
         except Exception as e:
             logger.error(f"获取合约信息时发生异常: {e}")
             return None
+    
+    def get_web3_instance(self) -> Optional[Web3]:
+        """
+        获取Web3实例
+        
+        Returns:
+            Web3实例或None
+        """
+        if not self.web3_instance and self.chain_type:
+            try:
+                config = self.CHAIN_CONFIGS.get(self.chain_type)
+                if config and config.get("rpc_url"):
+                    self.web3_instance = Web3(Web3.HTTPProvider(config["rpc_url"]))
+                    logger.debug(f"创建Web3实例: {config['rpc_url']}")
+                else:
+                    logger.error(f"无法获取{self.chain_type.value}的RPC URL")
+            except Exception as e:
+                logger.error(f"创建Web3实例失败: {e}")
+                return None
+        
+        return self.web3_instance
     
     def get_supported_chains(self) -> List[str]:
         """获取支持的区块链列表"""

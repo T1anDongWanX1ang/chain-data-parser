@@ -1,0 +1,77 @@
+{
+  "pipeline_delete_api_examples": {
+    "description": "Pipeline删除接口使用示例",
+    "base_url": "http://localhost:8000/api/v1/pipeline",
+    
+    "examples": [
+      {
+        "name": "删除管道 - 成功案例",
+        "method": "DELETE",
+        "url": "/api/v1/pipeline/123",
+        "description": "删除ID为123的管道（逻辑删除）",
+        "success_response": {
+          "success": true,
+          "message": "删除管道成功"
+        }
+      },
+      
+      {
+        "name": "删除管道 - 管道不存在",
+        "method": "DELETE", 
+        "url": "/api/v1/pipeline/999999",
+        "description": "尝试删除不存在的管道",
+        "error_response": {
+          "detail": "管道不存在: 999999"
+        },
+        "status_code": 404
+      },
+      
+      {
+        "name": "删除管道 - 管道已被删除",
+        "method": "DELETE",
+        "url": "/api/v1/pipeline/123", 
+        "description": "尝试删除已经被逻辑删除的管道",
+        "error_response": {
+          "detail": "管道已被删除"
+        },
+        "status_code": 400
+      },
+      
+      {
+        "name": "删除管道 - 有正在运行的任务",
+        "method": "DELETE",
+        "url": "/api/v1/pipeline/456",
+        "description": "尝试删除有正在运行任务的管道",
+        "error_response": {
+          "detail": "该管道还有正在运行的任务，不能删除。任务ID: 25, 26, 27"
+        },
+        "status_code": 400
+      }
+    ],
+    
+    "curl_examples": [
+      {
+        "description": "使用curl删除管道",
+        "command": "curl -X DELETE http://localhost:8000/api/v1/pipeline/123"
+      },
+      {
+        "description": "使用curl删除管道并查看详细响应",
+        "command": "curl -X DELETE -v http://localhost:8000/api/v1/pipeline/123"
+      }
+    ],
+    
+    "python_client_example": {
+      "description": "Python客户端调用示例",
+      "code": "import requests\n\n# 删除管道\nresponse = requests.delete('http://localhost:8000/api/v1/pipeline/123')\n\nif response.status_code == 200:\n    result = response.json()\n    print(f\"删除成功: {result['message']}\")\nelse:\n    error = response.json()\n    print(f\"删除失败: {error['detail']}\")"
+    },
+    
+    "notes": [
+      "删除操作是逻辑删除，不会物理删除数据库记录",
+      "删除前会检查是否有正在运行的任务（status=0）",
+      "如果有正在运行的任务，会返回错误并列出任务ID",
+      "已经被删除的管道不能再次删除",
+      "删除成功后会更新管道的update_time字段"
+    ]
+  }
+}
+

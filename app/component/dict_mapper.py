@@ -119,7 +119,13 @@ class DictMapper:
             # 应用转换器
             if rule.transformer:
                 if rule.transformer in self.transformers:
-                    source_value = self.transformers[rule.transformer](source_value)
+                    # 特殊处理需要额外上下文的转换器
+                    if rule.transformer == 'decimal_normalize_with_field':
+                        # decimal_normalize_with_field 需要 source_dict, value, decimals_field 参数
+                        source_value = self.transformers[rule.transformer](source_dict, source_value)
+                    else:
+                        # 普通转换器只需要 value 参数
+                        source_value = self.transformers[rule.transformer](source_value)
                 else:
                     logger.warning(f"转换器 {rule.transformer} 未找到")
             
@@ -441,6 +447,70 @@ class BuiltinTransformers:
             return f"{amount:.6f}"
         except Exception:
             return str(value)
+    
+    @staticmethod
+    def decimal_normalize(value: Any, decimals: int = 18) -> str:
+        """根据decimals标准化数值"""
+        if value is None:
+            return "0"
+        try:
+            # 如果是字符串形式的大数字，直接除以10的decimals次方
+            if isinstance(value, str):
+                amount = int(value) / (10 ** decimals)
+            else:
+                amount = float(value) / (10 ** decimals)
+            return str(amount)
+        except Exception:
+            return str(value)
+    
+    @staticmethod
+    def decimal_normalize_with_field(source_dict: Dict[str, Any], value: Any, decimals_field: str = 'decimals') -> str:
+        """根据同一对象中的decimals字段标准化数值"""
+        if value is None:
+            return "0"
+        try:
+            # 获取decimals值
+            decimals = source_dict.get(decimals_field, 18)
+            if isinstance(decimals, str):
+                decimals = int(decimals)
+            
+            # 标准化数值
+            if isinstance(value, str):
+                amount = int(value) / (10 ** decimals)
+            else:
+                amount = float(value) / (10 ** decimals)
+            return str(amount)
+        except Exception:
+            return str(value)
+    
+    @staticmethod
+    def hex_to_decimal(value: Any) -> str:
+        """16进制转10进制"""
+        if value is None:
+            return "0"
+        try:
+            if isinstance(value, str) and value.startswith('0x'):
+                return str(int(value, 16))
+            return str(value)
+        except Exception:
+            return str(value)
+    
+    @staticmethod
+    def timestamp_to_date(value: Any, format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
+        """时间戳转日期格式"""
+        if value is None:
+            return ""
+        try:
+            if isinstance(value, (int, float)):
+                dt = datetime.fromtimestamp(value)
+            elif isinstance(value, str) and value.isdigit():
+                dt = datetime.fromtimestamp(int(value))
+            else:
+                return str(value)
+            
+            return dt.strftime(format_str)
+        except Exception:
+            return str(value)
 
 
 # 内置验证器
@@ -539,10 +609,17 @@ class CommonMappingConfigs:
             "to_string": BuiltinTransformers.to_string,
             "to_int": BuiltinTransformers.to_int,
             "to_float": BuiltinTransformers.to_float,
+            "to_bool": BuiltinTransformers.to_bool,
+            "to_lowercase": BuiltinTransformers.to_lowercase,
+            "to_uppercase": BuiltinTransformers.to_uppercase,
+            "trim": BuiltinTransformers.trim,
             "format_address": BuiltinTransformers.format_address,
             "format_amount": BuiltinTransformers.format_amount,
             "format_timestamp": BuiltinTransformers.format_timestamp,
-            "to_lowercase": BuiltinTransformers.to_lowercase
+            "timestamp_to_date": BuiltinTransformers.timestamp_to_date,
+            "decimal_normalize": BuiltinTransformers.decimal_normalize,
+            "decimal_normalize_with_field": BuiltinTransformers.decimal_normalize_with_field,
+            "hex_to_decimal": BuiltinTransformers.hex_to_decimal
         }
         
         validators = {

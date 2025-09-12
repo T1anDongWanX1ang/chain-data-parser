@@ -1,0 +1,47 @@
+{
+  "kafka_producer_simple_format": {
+    "name": "Kafka消息发送器(仅数据)",
+    "enabled": true,
+    "type": "kafka_producer",
+    "config": {
+      "bootstrap_servers": "localhost:9092",
+      "topic": "token-transfer-events",
+      "acks": 1,
+      "retries": 3,
+      "batch_size": 16384,
+      "linger_ms": 0,
+      "sync_send": true,
+      "message_format": "simple"
+    }
+  },
+  "kafka_producer_envelope_format": {
+    "name": "Kafka消息发送器(包装格式)",
+    "enabled": true,
+    "type": "kafka_producer", 
+    "config": {
+      "bootstrap_servers": "localhost:9092",
+      "topic": "token-transfer-events-envelope",
+      "acks": 1,
+      "retries": 3,
+      "batch_size": 16384,
+      "linger_ms": 0,
+      "sync_send": true,
+      "message_format": "envelope"
+    }
+  },
+  "kafka_producer_detailed_format": {
+    "name": "Kafka消息发送器(详细格式)",
+    "enabled": true,
+    "type": "kafka_producer",
+    "config": {
+      "bootstrap_servers": "localhost:9092", 
+      "topic": "token-transfer-events-detailed",
+      "acks": 1,
+      "retries": 3,
+      "batch_size": 16384,
+      "linger_ms": 0,
+      "sync_send": true,
+      "message_format": "detailed"
+    }
+  }
+}

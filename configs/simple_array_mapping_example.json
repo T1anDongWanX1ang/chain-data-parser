@@ -1,0 +1,90 @@
+{
+  "pipeline_name": "简单数组索引映射示例",
+  "description": "展示数组索引访问的基本用法",
+  "classification_id": 1,
+  "components": [
+    {
+      "name": "ERC20 事件监控器",
+      "type": "event_monitor",
+      "chain_name": "ethereum",
+      "contract_address": "0xA0b86a33E6441E6C8F6f4c34E7C3F9844C7b8b7a",
+      "abi_path": "abis/erc20.json",
+      "events_to_monitor": ["Transfer"]
+    },
+    {
+      "name": "合约调用器",
+      "type": "contract_caller",
+      "contract_callers": [
+        {
+          "event_name": "Transfer",
+          "chain_name": "ethereum",
+          "abi_path": "abis/erc20.json",
+          "contract_address": "0xA0b86a33E6441E6C8F6f4c34E7C3F9844C7b8b7a",
+          "method_name": "getMultipleValues",
+          "method_params": [],
+          "description": "假设这个方法返回数组: [name, symbol, decimals, totalSupply]"
+        }
+      ]
+    },
+    {
+      "name": "数组索引映射器",
+      "type": "dict_mapper",
+      "dict_mappers": [
+        {
+          "event_name": "Transfer",
+          "mapping_rules": [
+            {
+              "source_key": "event_name",
+              "target_key": "event_type",
+              "transformer": "to_string"
+            },
+            {
+              "source_key": "chain_id",
+              "target_key": "network_id",
+              "transformer": "to_int"
+            },
+            {
+              "source_key": "getMultipleValues[0]",
+              "target_key": "token_name",
+              "transformer": "to_string",
+              "description": "从数组第1个元素获取代币名称"
+            },
+            {
+              "source_key": "getMultipleValues[1]",
+              "target_key": "token_symbol",
+              "transformer": "to_string",
+              "description": "从数组第2个元素获取代币符号"
+            },
+            {
+              "source_key": "getMultipleValues[2]",
+              "target_key": "token_decimals",
+              "transformer": "to_int",
+              "description": "从数组第3个元素获取代币精度"
+            },
+            {
+              "source_key": "getMultipleValues[3]",
+              "target_key": "total_supply",
+              "transformer": "to_string",
+              "description": "从数组第4个元素获取总供应量"
+            },
+            {
+              "source_key": "args.from",
+              "target_key": "sender_address",
+              "transformer": "format_address"
+            },
+            {
+              "source_key": "args.to",
+              "target_key": "recipient_address",
+              "transformer": "format_address"
+            },
+            {
+              "source_key": "args.value",
+              "target_key": "transfer_amount",
+              "transformer": "to_string"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

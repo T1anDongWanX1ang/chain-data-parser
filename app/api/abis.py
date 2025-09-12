@@ -21,6 +21,7 @@ class AbiCreateRequest(BaseModel):
     chain_name: str = Field(..., description="链名称", min_length=1, max_length=32)
     contract_name: Optional[str] = Field(None, description="合约名称（用户定义的可读名称）", max_length=255)
     abi_content: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = Field(None, description="ABI JSON内容")
+    file_path: Optional[str] = Field(None, description="ABI文件路径")
     source_type: str = Field(default="manual", description="来源类型（manual: 手动上传, auto: 自动获取）")
     
     @validator('contract_address')
@@ -171,12 +172,15 @@ async def create_abi(
                 detail="无效的ABI格式"
             )
         
-        # 保存ABI文件
-        file_path = await abi_storage_service.save_abi(
-            request.contract_address,
-            request.chain_name,
-            abi_content
-        )
+        # 保存ABI文件 - 如果请求中有file_path则使用，否则生成新的
+        if request.file_path:
+            file_path = request.file_path
+        else:
+            file_path = await abi_storage_service.save_abi(
+                request.contract_address,
+                request.chain_name,
+                abi_content
+            )
         
         # 创建数据库记录
         abi_record = ContractAbi(
@@ -217,7 +221,69 @@ async def create_abi(
         )
 
 
-@router.post("/auto-fetch", response_model=OperationResponse, summary="自动获取ABI", status_code=status.HTTP_201_CREATED)
+@router.post("/fetch-only", response_model=OperationResponse, summary="仅获取ABI数据（不保存）", status_code=status.HTTP_200_OK)
+async def fetch_abi_only(
+    request: AbiAutoFetchRequest
+):
+    """
+    仅从区块链浏览器获取合约ABI数据，不创建记录，用于前端预览
+    """
+    try:
+        # 自动获取ABI，使用更长的超时时间（60秒）
+        async with BlockchainExplorerService(timeout=60) as explorer:
+            chain_type = ChainType(request.chain_name)
+            abi_list = await explorer.get_contract_abi(
+                request.contract_address, 
+                chain_type, 
+                check_proxy=request.check_proxy
+            )
+            
+            if not abi_list:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"无法从 {request.chain_name} 链浏览器获取合约 {request.contract_address} 的ABI"
+                )
+        
+        # 验证ABI格式
+        if not abi_storage_service.validate_abi_format(abi_list):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="无效的ABI格式"
+            )
+        
+        # 生成file_path（但不实际保存文件）
+        file_path = await abi_storage_service.save_abi(
+            request.contract_address,
+            request.chain_name,
+            abi_list
+        )
+        
+        logger.info(f"成功获取ABI数据（未保存到数据库）: {request.contract_address} on {request.chain_name}")
+        
+        return OperationResponse(
+            success=True,
+            message="ABI数据获取成功",
+            data={
+                "abi_content": abi_list,
+                "contract_address": request.contract_address,
+                "chain_name": request.chain_name,
+                "file_path": file_path,
+                "functions_count": len([item for item in abi_list if isinstance(item, dict) and item.get('type') == 'function']) if isinstance(abi_list, list) else 0,
+                "events_count": len([item for item in abi_list if isinstance(item, dict) and item.get('type') == 'event']) if isinstance(abi_list, list) else 0
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取ABI数据失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取ABI数据失败: {str(e)}"
+        )
+
+
+@router.post("/auto-fetch", response_model=OperationResponse, summary="自动获取ABI并保存", status_code=status.HTTP_201_CREATED)
 async def auto_fetch_abi(
     request: AbiAutoFetchRequest,
     db: AsyncSession = Depends(get_db_session)
@@ -269,7 +335,7 @@ async def auto_fetch_abi(
             contract_name=request.contract_name,
             abi_content=json.dumps(abi_list, ensure_ascii=False),
             file_path=file_path,
-            source_type="auto"
+            source_type="auto_fetch"
         )
         
         db.add(abi_record)
