@@ -3,7 +3,7 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, and_, or_
 from loguru import logger
 
 from app.models.pipeline_task import PipelineTask
@@ -45,11 +45,17 @@ class TaskMonitorService:
         try:
             timeout_time = datetime.now() - timedelta(minutes=timeout_minutes)
             
-            # 查询超时的正在运行任务
+            # 查询超时的正在运行任务 - 使用心跳时间判断
             result = await session.execute(
                 select(PipelineTask).where(
                     PipelineTask.status == 0,
-                    PipelineTask.create_time < timeout_time
+                    # 优先使用心跳时间，如果没有心跳时间则使用创建时间
+                    or_(
+                        and_(PipelineTask.last_heartbeat.isnot(None), 
+                             PipelineTask.last_heartbeat < timeout_time),
+                        and_(PipelineTask.last_heartbeat.is_(None), 
+                             PipelineTask.create_time < timeout_time)
+                    )
                 )
             )
             timeout_tasks = result.scalars().all()
@@ -59,7 +65,13 @@ class TaskMonitorService:
                 
                 for task in timeout_tasks:
                     task.status = 2  # 失败
-                    logger.info(f"任务 {task.id} 超时失败 - 运行时间超过 {timeout_minutes} 分钟")
+                    # 记录更详细的超时信息
+                    if task.last_heartbeat:
+                        last_heartbeat_str = task.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')
+                        logger.info(f"任务 {task.id} 超时失败 - 最后心跳时间: {last_heartbeat_str}, 超过 {timeout_minutes} 分钟无心跳")
+                    else:
+                        create_time_str = task.create_time.strftime('%Y-%m-%d %H:%M:%S') if task.create_time else 'N/A'
+                        logger.info(f"任务 {task.id} 超时失败 - 创建时间: {create_time_str}, 超过 {timeout_minutes} 分钟无心跳")
                 
                 await session.commit()
                 logger.info(f"已标记 {len(timeout_tasks)} 个超时任务为失败")
@@ -102,6 +114,29 @@ class TaskMonitorService:
         except Exception as e:
             logger.error(f"获取任务统计失败: {e}")
             return {"error": str(e)}
+    
+    @classmethod
+    async def update_task_heartbeat(cls, session: AsyncSession, task_id: int) -> bool:
+        """更新任务心跳时间"""
+        try:
+            task = await session.get(PipelineTask, task_id)
+            if not task:
+                logger.warning(f"任务不存在，无法更新心跳: task_id={task_id}")
+                return False
+            
+            if task.status != 0:  # 只更新正在运行的任务
+                logger.warning(f"任务状态不是运行中，无法更新心跳: task_id={task_id}, status={task.status}")
+                return False
+            
+            task.last_heartbeat = datetime.now()
+            await session.commit()
+            logger.debug(f"任务心跳已更新: task_id={task_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"更新任务心跳失败: task_id={task_id}, 错误: {e}")
+            await session.rollback()
+            return False
 
 
 class TaskMonitorDaemon:

@@ -59,6 +59,7 @@ class PipelineContext:
     data: Dict[str, Any]
     metadata: Dict[str, Any]
     pipeline_id: str
+    task_id: Optional[int] = None  # 添加任务ID字段
     step_count: int = 0
     
     def add_step_data(self, component_name: str, step_data: Dict[str, Any]):
@@ -138,7 +139,10 @@ class EventMonitorComponent(PipelineComponent):
     async def execute(self, context: PipelineContext) -> PipelineContext:
         """启动事件监控"""
         if self.monitor:
-            self.logger.info("启动事件监控...")
+            # 传递任务ID给监控器
+            if hasattr(self.monitor, 'task_id'):
+                self.monitor.task_id = context.task_id
+            self.logger.info(f"启动事件监控... (task_id: {context.task_id})")
             await self.monitor.start_monitoring()
         return context
     
@@ -856,7 +860,7 @@ class ComponentFactory:
 class OptimizedBlockchainDataPipeline:
     """优化后的区块链数据管道执行器"""
 
-    def __init__(self, config_path: str = None, config_dict: Dict[str, Any] = None, log_path: str = None):
+    def __init__(self, config_path: str = None, config_dict: Dict[str, Any] = None, log_path: str = None, task_id: int = None):
         """
         初始化管道
         
@@ -864,11 +868,13 @@ class OptimizedBlockchainDataPipeline:
             config_path: JSON配置文件路径（可选）
             config_dict: 配置字典（可选）
             log_path: 日志文件路径（可选）
+            task_id: 任务ID（可选）
         """
         self.config_path = config_path
         self.config = None
         self.components: List[PipelineComponent] = []
         self.log_path = log_path
+        self.task_id = task_id
         
         # 为每个实例创建唯一的标识
         self.instance_id = str(uuid.uuid4())[:8]
@@ -1117,7 +1123,8 @@ class OptimizedBlockchainDataPipeline:
                     'start_time': datetime.now().isoformat(),
                     'instance_id': self.instance_id
                 },
-                pipeline_id=self.instance_id
+                pipeline_id=self.instance_id,
+                task_id=self.task_id
             )
             
             # 启动数据源组件（通常是长期运行的）

@@ -18,37 +18,49 @@ class ChainType(Enum):
     POLYGON = "polygon"
     ARBITRUM = "arbitrum"
     OPTIMISM = "optimism"
+    BASE = "base"
 
 
 class BlockchainExplorerService:
     """区块链浏览器ABI获取服务"""
     
-    # 各链的API配置
+    # 各链的API配置 - 统一使用 v2 API 格式
     CHAIN_CONFIGS = {
         ChainType.ETHEREUM: {
-            "base_url": "https://api.etherscan.io/api",
+            "base_url": "https://api.etherscan.io/v2/api",
             "api_key_env": "ETHERSCAN_API_KEY",
-            "rpc_url": settings.blockchain.eth_rpc_url
+            "rpc_url": settings.blockchain.eth_rpc_url,
+            "chain_id": 1
         },
         ChainType.BSC: {
-            "base_url": "https://api.bscscan.com/api",
-            "api_key_env": "BSCSCAN_API_KEY",
-            "rpc_url": settings.blockchain.bsc_rpc_url
+            "base_url": "https://api.etherscan.io/v2/api",
+            "api_key_env": "ETHERSCAN_API_KEY",
+            "rpc_url": settings.blockchain.bsc_rpc_url,
+            "chain_id": 56
         },
         ChainType.POLYGON: {
-            "base_url": "https://api.polygonscan.com/api",
-            "api_key_env": "POLYGONSCAN_API_KEY",
-            "rpc_url": settings.blockchain.polygon_rpc_url
+            "base_url": "https://api.etherscan.io/v2/api",
+            "api_key_env": "ETHERSCAN_API_KEY",
+            "rpc_url": settings.blockchain.polygon_rpc_url,
+            "chain_id": 137
         },
         ChainType.ARBITRUM: {
-            "base_url": "https://api.arbiscan.io/api",
-            "api_key_env": "ARBISCAN_API_KEY",
-            "rpc_url": settings.blockchain.eth_rpc_url  # 使用以太坊RPC作为默认
+            "base_url": "https://api.etherscan.io/v2/api",
+            "api_key_env": "ETHERSCAN_API_KEY",
+            "rpc_url": settings.blockchain.eth_rpc_url,
+            "chain_id": 42161
         },
         ChainType.OPTIMISM: {
-            "base_url": "https://api-optimistic.etherscan.io/api",
-            "api_key_env": "OPTIMISM_API_KEY",
-            "rpc_url": settings.blockchain.eth_rpc_url  # 使用以太坊RPC作为默认
+            "base_url": "https://api.etherscan.io/v2/api",
+            "api_key_env": "ETHERSCAN_API_KEY",
+            "rpc_url": settings.blockchain.eth_rpc_url,
+            "chain_id": 10
+        },
+        ChainType.BASE: {
+            "base_url": "https://api.etherscan.io/v2/api",
+            "api_key_env": "ETHERSCAN_API_KEY",
+            "rpc_url": settings.blockchain.eth_rpc_url,
+            "chain_id": 8453
         }
     }
     
@@ -173,16 +185,8 @@ class BlockchainExplorerService:
         Returns:
             API密钥，如果未配置返回None
         """
-        # 映射链类型到配置字段名
-        api_key_mapping = {
-            ChainType.ETHEREUM: settings.blockchain.etherscan_api_key,
-            ChainType.BSC: settings.blockchain.bscscan_api_key,
-            ChainType.POLYGON: settings.blockchain.polygonscan_api_key,
-            ChainType.ARBITRUM: settings.blockchain.arbiscan_api_key,
-            ChainType.OPTIMISM: settings.blockchain.optimism_api_key,
-        }
-        
-        api_key = api_key_mapping.get(chain_type)
+        # 所有链统一使用 ETHERSCAN_API_KEY
+        api_key = settings.blockchain.etherscan_api_key
         
         if not api_key:
             logger.warning(f"未配置 {chain_type.value} 链的API密钥")
@@ -243,6 +247,11 @@ class BlockchainExplorerService:
         """
         从区块链浏览器获取合约ABI（支持代理合约检测）
         
+        优化后的逻辑：
+        1. 先使用 getsourcecode 检查 Proxy 和 Implementation 字段
+        2. 如果是代理合约（Proxy=1），使用 Implementation 地址
+        3. 使用 getabi 接口获取最终地址的ABI
+        
         Args:
             contract_address: 合约地址
             chain_type: 链类型，如果不指定则自动检测
@@ -265,68 +274,20 @@ class BlockchainExplorerService:
             # 实际要查询的合约地址
             target_address = contract_address
             
-            # 检测代理合约
+            # 检测代理合约 - 优先使用 getsourcecode 的 Proxy 和 Implementation 字段
             if check_proxy:
                 try:
-                    # 首先尝试使用区块链浏览器API检查代理信息
                     logger.info(f"检测合约 {contract_address} 是否为代理合约...")
-                    explorer_proxy_info = await self._check_proxy_via_explorer(contract_address, chain_type)
+                    proxy_info = await self._check_proxy_via_getsourcecode(contract_address, chain_type)
                     
-                    if explorer_proxy_info and explorer_proxy_info.get("is_proxy") and explorer_proxy_info.get("implementation"):
-                        target_address = explorer_proxy_info["implementation"]
+                    if proxy_info and proxy_info.get("is_proxy") and proxy_info.get("implementation"):
+                        target_address = proxy_info["implementation"]
                         logger.info(
-                            f"通过区块链浏览器API检测到代理合约: "
+                            f"通过getsourcecode检测到代理合约: "
                             f"{contract_address} -> {target_address}"
                         )
                     else:
-                        # 如果浏览器API没有代理信息，使用传统的RPC方法检测
-                        rpc_url = config.get("rpc_url")
-                        if rpc_url:
-                            # 使用较短的超时时间进行代理检测，避免影响整体性能
-                            proxy_timeout = min(10, self.timeout // 2)  # 最多10秒，或总超时的一半
-                            proxy_result = await ProxyContractDetector.detect_proxy_contract(
-                                contract_address, rpc_url, proxy_timeout
-                            )
-                            
-                            if proxy_result["is_proxy"] and proxy_result["implementation_address"]:
-                                target_address = proxy_result["implementation_address"]
-                                logger.info(
-                                    f"检测到{proxy_result['proxy_type']}代理合约: "
-                                    f"{contract_address} -> {target_address}"
-                                )
-                            elif proxy_result["is_proxy"] and not proxy_result["implementation_address"]:
-                                logger.warning(
-                                    f"检测到{proxy_result['proxy_type']}代理合约 {contract_address}，"
-                                    f"但无法获取实现地址（{proxy_result['detection_method']}），开始高级分析"
-                                )
-                                
-                                # 启动高级代理合约分析
-                                try:
-                                    advanced_result = await AdvancedProxyAnalyzer.advanced_proxy_analysis(
-                                        contract_address, rpc_url, chain_type.value, proxy_timeout
-                                    )
-                                    
-                                    if advanced_result.get("implementation_addresses"):
-                                        impl_addresses = advanced_result["implementation_addresses"]
-                                        logger.info(
-                                            f"高级分析为代理合约 {contract_address} 找到了 {len(impl_addresses)} 个可能的实现地址: "
-                                            f"{impl_addresses}"
-                                        )
-                                        
-                                        # 使用第一个找到的实现地址
-                                        target_address = impl_addresses[0]
-                                        logger.info(f"使用实现地址: {target_address}")
-                                    else:
-                                        logger.warning(
-                                            f"高级分析也无法为代理合约 {contract_address} 找到实现地址"
-                                        )
-                                        
-                                except Exception as advanced_e:
-                                    logger.error(f"高级代理分析失败: {advanced_e}")
-                            else:
-                                logger.info(f"合约 {contract_address} 不是代理合约")
-                        else:
-                            logger.warning("未配置RPC URL，跳过代理合约检测")
+                        logger.info(f"合约 {contract_address} 不是代理合约或无法获取实现地址")
                         
                 except Exception as e:
                     logger.warning(f"代理合约检测失败: {e}，继续使用原地址")
@@ -336,9 +297,10 @@ class BlockchainExplorerService:
             if not api_key:
                 logger.warning(f"未配置 {chain_type.value} 的API密钥，尝试使用免费额度")
             
-            # 构建请求参数
+            # 构建请求参数 - v2 API 格式
             params = {
-                "module": "contract",
+                "chainid": config["chain_id"],
+                "module": "contract", 
                 "action": "getabi",
                 "address": target_address
             }
@@ -409,6 +371,7 @@ class BlockchainExplorerService:
             
             # 构建请求参数
             params = {
+                "chainid": config["chain_id"],
                 "module": "contract",
                 "action": "getsourcecode",
                 "address": contract_address
@@ -507,6 +470,7 @@ class BlockchainExplorerService:
             
             # 构建请求参数
             params = {
+                "chainid": config["chain_id"],
                 "module": "contract",
                 "action": "getsourcecode",
                 "address": contract_address
@@ -548,6 +512,135 @@ class BlockchainExplorerService:
             logger.debug(f"通过浏览器API检查代理合约信息失败: {e}")
         
         return None
+
+    async def _check_proxy_via_getsourcecode(self, contract_address: str, chain_type: ChainType) -> Optional[Dict[str, Any]]:
+        """
+        通过 getsourcecode 接口检查代理合约信息（优化版本）
+        
+        专门检查 Proxy 和 Implementation 字段来判断是否为代理合约
+        
+        Args:
+            contract_address: 合约地址
+            chain_type: 链类型
+            
+        Returns:
+            包含代理信息的字典，如果不是代理合约或检查失败则返回None
+        """
+        try:
+            # 获取链配置
+            config = self.CHAIN_CONFIGS.get(chain_type)
+            if not config:
+                return None
+            
+            # 获取API密钥
+            api_key = self._get_api_key(chain_type)
+            
+            # 构建请求参数
+            params = {
+                "chainid": config["chain_id"],
+                "module": "contract",
+                "action": "getsourcecode",
+                "address": contract_address
+            }
+            
+            if api_key:
+                params["apikey"] = api_key
+            
+            # 发送请求
+            base_url = config["base_url"]
+            logger.debug(f"使用getsourcecode检查合约 {contract_address} 的代理信息")
+            
+            response_data = await self._make_request(base_url, params)
+            if not response_data:
+                return None
+            
+            # 解析响应
+            if response_data.get("status") == "1":
+                result = response_data.get("result", [])
+                if result and len(result) > 0:
+                    contract_info = result[0]
+                    
+                    # 检查是否为代理合约 - 优先使用 Proxy 和 Implementation 字段
+                    proxy_flag = contract_info.get("Proxy", "0")
+                    implementation_address = contract_info.get("Implementation", "")
+                    
+                    if proxy_flag == "1" and implementation_address:
+                        logger.info(f"getsourcecode检测到代理合约: {contract_address} -> {implementation_address}")
+                        return {
+                            "is_proxy": True,
+                            "implementation": implementation_address,
+                            "detection_method": "getsourcecode_api"
+                        }
+                    else:
+                        logger.debug(f"getsourcecode未检测到代理合约: {contract_address} (Proxy={proxy_flag}, Implementation={implementation_address})")
+                        return {"is_proxy": False}
+                        
+        except Exception as e:
+            logger.debug(f"使用getsourcecode检查代理合约信息失败: {e}")
+        
+        return None
+
+    async def _fetch_abi_via_getabi(self, contract_address: str, chain_type: ChainType) -> Optional[List[Dict[str, Any]]]:
+        """
+        使用 getabi 接口获取合约ABI
+        
+        Args:
+            contract_address: 合约地址
+            chain_type: 链类型
+            
+        Returns:
+            合约ABI列表，获取失败返回None
+        """
+        try:
+            # 获取链配置
+            config = self.CHAIN_CONFIGS.get(chain_type)
+            if not config:
+                return None
+            
+            # 获取API密钥
+            api_key = self._get_api_key(chain_type)
+            
+            # 构建请求参数
+            params = {
+                "module": "contract",
+                "action": "getabi",
+                "address": contract_address
+            }
+            
+            if api_key:
+                params["apikey"] = api_key
+            
+            # 发送请求
+            base_url = config["base_url"]
+            logger.info(f"使用getabi接口获取合约 {contract_address} 的ABI")
+            
+            response_data = await self._make_request(base_url, params)
+            if not response_data:
+                return None
+            
+            # 解析响应
+            if response_data.get("status") == "1":
+                abi_str = response_data.get("result", "")
+                if abi_str and abi_str != "Contract source code not verified":
+                    try:
+                        # 解析ABI JSON
+                        import json
+                        abi_list = json.loads(abi_str)
+                        logger.info(f"成功通过getabi获取合约ABI，包含 {len(abi_list)} 个函数/事件")
+                        return abi_list
+                    except json.JSONDecodeError as e:
+                        logger.error(f"ABI JSON解析失败: {e}")
+                else:
+                    logger.warning(f"合约 {contract_address} 未验证或无ABI")
+            else:
+                error_msg = response_data.get("message", "未知错误")
+                logger.warning(f"获取ABI失败: {error_msg}")
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"使用getabi获取合约ABI时发生异常: {e}")
+            return None
 
     def get_supported_chains(self) -> List[str]:
         """获取支持的区块链列表"""

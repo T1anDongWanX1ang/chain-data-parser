@@ -505,7 +505,7 @@ class PipelineConfigService:
 
             # 使用优化版配置字典创建管道执行器
             from app.component.pipeline_executor_optimized import OptimizedBlockchainDataPipeline
-            pipeline = OptimizedBlockchainDataPipeline(config_dict=config, log_path=task_log_path)
+            pipeline = OptimizedBlockchainDataPipeline(config_dict=config, log_path=task_log_path, task_id=task_id)
 
             # 第三步：执行管道
             await pipeline.execute_pipeline()

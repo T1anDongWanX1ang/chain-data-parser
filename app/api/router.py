@@ -7,6 +7,7 @@ from .flink_job import router as flink_job_router
 from .abis import router as abi_router
 from .contract_methods import router as contract_methods_router
 from .contract_info import router as contract_info_router
+from .alerts import router as alerts_router
 
 api_router = APIRouter()
 
@@ -30,3 +31,6 @@ api_router.include_router(contract_methods_router)
 
 # 包含合约信息查询路由
 api_router.include_router(contract_info_router)
+
+# 包含告警管理路由
+api_router.include_router(alerts_router)

@@ -44,6 +44,12 @@ class PipelineTask(Base):
         comment="日志路径"
     )
     
+    last_heartbeat: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        comment="最后心跳时间"
+    )
+    
     # 定义索引
     __table_args__ = (
         Index('i_pipeline_id', 'pipeline_id'),
@@ -65,7 +71,8 @@ class PipelineTask(Base):
             'pipeline_id': self.pipeline_id,
             'create_time': self.create_time.isoformat() if self.create_time else None,
             'status': self.status,
-            'log_path': self.log_path
+            'log_path': self.log_path,
+            'last_heartbeat': self.last_heartbeat.isoformat() if self.last_heartbeat else None
         }
     
     @property
