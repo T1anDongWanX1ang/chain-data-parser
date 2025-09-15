@@ -473,7 +473,10 @@ class ProxyContractDetector:
             "0x5c60da1b",  # implementation()
             "0x39bc9af7",  # implementation() - 另一种签名
             "0x4555d5c9",  # getImplementation()
-            "0x0e61e117"   # getImplementationAddress()
+            "0x0e61e117",  # getImplementationAddress()
+            "0x0ac7c44c",  # target() - 一些代理合约使用这个
+            "0x65fb1017",  # proxy() - 另一种代理方法
+            "0x6ba9f3d8"   # getTarget() - 目标地址获取
         ]
         
         for signature in method_signatures:
@@ -491,6 +494,30 @@ class ProxyContractDetector:
                         
             except Exception as e:
                 logger.debug(f"方法调用 {signature} 失败: {e}")
+                continue
+        
+        # 尝试从存储槽读取更多可能的代理地址位置
+        additional_slots = [
+            "0x0000000000000000000000000000000000000000000000000000000000000000",  # slot 0
+            "0x0000000000000000000000000000000000000000000000000000000000000001",  # slot 1
+            "0x0000000000000000000000000000000000000000000000000000000000000002",  # slot 2
+            "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7",  # compound proxy
+        ]
+        
+        for slot in additional_slots:
+            try:
+                result = await ProxyContractDetector._read_storage_slot(
+                    contract_address, slot, rpc_url, timeout
+                )
+                
+                if result and result != "0x" + "0" * 64:
+                    address = "0x" + result[-40:]
+                    if address != "0x" + "0" * 40:
+                        logger.info(f"从存储槽 {slot} 获取实现地址: {address}")
+                        return address
+                        
+            except Exception as e:
+                logger.debug(f"读取存储槽 {slot} 失败: {e}")
                 continue
         
         return None
@@ -619,3 +646,565 @@ async def get_contract_implementation_address(
         return result["implementation_address"]
     
     return contract_address
+
+
+class AdvancedProxyAnalyzer:
+    """高级代理合约分析器"""
+    
+    @staticmethod
+    async def advanced_proxy_analysis(
+        contract_address: str,
+        rpc_url: str,
+        chain_name: str = "ethereum",
+        timeout: int = 30
+    ) -> Dict[str, Any]:
+        """
+        高级代理合约分析，使用多种技术获取实现地址
+        
+        Args:
+            contract_address: 合约地址
+            rpc_url: RPC节点URL
+            chain_name: 链名称
+            timeout: 请求超时时间
+            
+        Returns:
+            分析结果包含所有可能的实现地址
+        """
+        result = {
+            "contract_address": contract_address,
+            "implementation_addresses": [],
+            "creation_info": None,
+            "bytecode_analysis": {},
+            "transaction_analysis": {},
+            "error": None
+        }
+        
+        try:
+            # 1. 历史交易分析
+            logger.info(f"开始分析合约 {contract_address} 的历史交易")
+            tx_analysis = await AdvancedProxyAnalyzer._analyze_creation_transaction(
+                contract_address, rpc_url, chain_name, timeout
+            )
+            result["transaction_analysis"] = tx_analysis
+            
+            # 2. 深度字节码分析
+            logger.info(f"开始深度分析合约 {contract_address} 的字节码")
+            bytecode_analysis = await AdvancedProxyAnalyzer._deep_bytecode_analysis(
+                contract_address, rpc_url, timeout
+            )
+            result["bytecode_analysis"] = bytecode_analysis
+            
+            # 3. 从多种来源收集实现地址
+            addresses = set()
+            
+            # 从交易分析中获取
+            if tx_analysis.get("proxy_factory_pattern"):
+                factory_addr = tx_analysis["proxy_factory_pattern"].get("master_copy")
+                if factory_addr:
+                    addresses.add(factory_addr)
+            
+            if tx_analysis.get("constructor_args"):
+                for arg in tx_analysis["constructor_args"]:
+                    if AdvancedProxyAnalyzer._is_valid_address(arg):
+                        addresses.add(arg)
+            
+            # 从字节码分析中获取
+            if bytecode_analysis.get("hardcoded_addresses"):
+                addresses.update(bytecode_analysis["hardcoded_addresses"])
+            
+            # 4. 事件日志分析
+            logger.info(f"分析合约 {contract_address} 的升级事件")
+            upgrade_events = await AdvancedProxyAnalyzer._analyze_upgrade_events(
+                contract_address, rpc_url, timeout
+            )
+            
+            for event in upgrade_events:
+                if event.get("new_implementation"):
+                    addresses.add(event["new_implementation"])
+            
+            # 5. 特殊模式检测 - 添加已知的代理合约模式
+            special_addresses = await AdvancedProxyAnalyzer._check_special_proxy_patterns(
+                contract_address, rpc_url, timeout
+            )
+            addresses.update(special_addresses)
+            
+            # 6. 验证和过滤地址
+            valid_addresses = []
+            for addr in addresses:
+                if await AdvancedProxyAnalyzer._verify_implementation_address(
+                    addr, rpc_url, timeout
+                ):
+                    valid_addresses.append(addr)
+            
+            result["implementation_addresses"] = valid_addresses
+            
+            logger.info(
+                f"高级分析完成，为合约 {contract_address} 找到 {len(valid_addresses)} 个可能的实现地址"
+            )
+            
+        except Exception as e:
+            logger.error(f"高级代理分析失败: {e}")
+            result["error"] = str(e)
+        
+        return result
+    
+    @staticmethod
+    async def _analyze_creation_transaction(
+        contract_address: str,
+        rpc_url: str,
+        chain_name: str,
+        timeout: int
+    ) -> Dict[str, Any]:
+        """
+        分析合约创建交易获取代理信息
+        """
+        result = {
+            "creation_tx": None,
+            "creator_address": None,
+            "constructor_args": [],
+            "proxy_factory_pattern": None
+        }
+        
+        try:
+            # 通过区块链浏览器API获取创建交易
+            creation_info = await AdvancedProxyAnalyzer._get_contract_creation_info(
+                contract_address, chain_name, timeout
+            )
+            
+            if creation_info:
+                result["creation_tx"] = creation_info.get("txhash")
+                result["creator_address"] = creation_info.get("from")
+                
+                # 解析构造函数参数
+                input_data = creation_info.get("input", "")
+                if input_data and len(input_data) > 10:
+                    constructor_args = AdvancedProxyAnalyzer._parse_constructor_args(input_data)
+                    result["constructor_args"] = constructor_args
+                
+                # 检查是否为工厂模式代理
+                factory_info = await AdvancedProxyAnalyzer._check_factory_pattern(
+                    creation_info.get("from"), rpc_url, timeout
+                )
+                result["proxy_factory_pattern"] = factory_info
+                
+        except Exception as e:
+            logger.debug(f"创建交易分析失败: {e}")
+        
+        return result
+    
+    @staticmethod
+    async def _deep_bytecode_analysis(
+        contract_address: str,
+        rpc_url: str,
+        timeout: int
+    ) -> Dict[str, Any]:
+        """
+        深度分析合约字节码
+        """
+        result = {
+            "bytecode_size": 0,
+            "has_delegatecall": False,
+            "has_callcode": False,
+            "hardcoded_addresses": [],
+            "assembly_patterns": []
+        }
+        
+        try:
+            bytecode = await ProxyContractDetector._get_contract_bytecode(
+                contract_address, rpc_url, timeout
+            )
+            
+            if not bytecode or bytecode == "0x":
+                return result
+            
+            code = bytecode[2:] if bytecode.startswith("0x") else bytecode
+            result["bytecode_size"] = len(code) // 2
+            
+            # 检查指令模式
+            result["has_delegatecall"] = "f4" in code.lower()
+            result["has_callcode"] = "f2" in code.lower()
+            
+            # 提取可能的地址
+            addresses = AdvancedProxyAnalyzer._extract_addresses_from_bytecode(code)
+            result["hardcoded_addresses"] = addresses
+            
+            # 分析汇编模式
+            patterns = AdvancedProxyAnalyzer._analyze_assembly_patterns(code)
+            result["assembly_patterns"] = patterns
+            
+        except Exception as e:
+            logger.debug(f"字节码分析失败: {e}")
+        
+        return result
+    
+    @staticmethod
+    async def _analyze_upgrade_events(
+        contract_address: str,
+        rpc_url: str,
+        timeout: int
+    ) -> List[Dict[str, Any]]:
+        """
+        分析代理合约的升级事件
+        """
+        events = []
+        
+        try:
+            # 常见的升级事件签名
+            upgrade_topics = [
+                "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b",  # Upgraded(address)
+                "0x7e644d79422f17c01e4894b5f4f588d331ebfa28653d42ae832dc59e38c9798f",  # AdminChanged
+                "0xa78a17b0bcf19b95d46d53ddf59df127b353fdf4b7bc34b9c5d04c8e12c06dc1",  # ImplementationUpdated
+            ]
+            
+            for topic in upgrade_topics:
+                try:
+                    logs = await AdvancedProxyAnalyzer._get_event_logs(
+                        contract_address, topic, rpc_url, timeout
+                    )
+                    
+                    for log in logs:
+                        event_data = AdvancedProxyAnalyzer._parse_upgrade_event(log)
+                        if event_data:
+                            events.append(event_data)
+                            
+                except Exception as e:
+                    logger.debug(f"获取升级事件失败 {topic}: {e}")
+                    continue
+            
+        except Exception as e:
+            logger.debug(f"升级事件分析失败: {e}")
+        
+        return events
+    
+    @staticmethod
+    def _extract_addresses_from_bytecode(bytecode: str) -> List[str]:
+        """
+        从字节码中提取可能的地址
+        """
+        addresses = []
+        
+        # 查找20字节的地址模式
+        import re
+        
+        # 地址通常以0x开头，或者在字节码中以00000000000000000000...开头
+        # 查找可能的地址模式（40个十六进制字符）
+        address_pattern = r'([0-9a-fA-F]{40})'
+        matches = re.findall(address_pattern, bytecode)
+        
+        for match in matches:
+            # 过滤掉全0或明显不是地址的值
+            if match != "0" * 40 and not match.startswith("ffffff"):
+                address = "0x" + match.lower()
+                if AdvancedProxyAnalyzer._is_valid_address(address):
+                    addresses.append(address)
+        
+        # 更精细的模式匹配 - 查找特定的存储/加载模式
+        # 查找PUSH20指令后的地址 (0x73 + 20字节地址)
+        push20_pattern = r'73([0-9a-fA-F]{40})'
+        push20_matches = re.findall(push20_pattern, bytecode, re.IGNORECASE)
+        
+        for match in push20_matches:
+            if match != "0" * 40:
+                address = "0x" + match.lower()
+                if AdvancedProxyAnalyzer._is_valid_address(address):
+                    addresses.append(address)
+                    logger.info(f"从PUSH20指令中提取到地址: {address}")
+        
+        # 查找可能的存储槽模式 - 地址可能存储在特定位置
+        # 查找常见的代理模式：EXTCODESIZE, DELEGATECALL等指令序列附近的地址
+        delegatecall_pattern = r'f4.{0,100}73([0-9a-fA-F]{40})'
+        delegatecall_matches = re.findall(delegatecall_pattern, bytecode, re.IGNORECASE)
+        
+        for match in delegatecall_matches:
+            if match != "0" * 40:
+                address = "0x" + match.lower()
+                if AdvancedProxyAnalyzer._is_valid_address(address):
+                    addresses.append(address)
+                    logger.info(f"从DELEGATECALL附近提取到地址: {address}")
+        
+        return list(set(addresses))  # 去重
+    
+    @staticmethod
+    def _analyze_assembly_patterns(bytecode: str) -> List[str]:
+        """
+        分析汇编模式
+        """
+        patterns = []
+        
+        # 检查常见的代理模式
+        if "3d3d3d3d363d3d37363d73" in bytecode.lower():
+            patterns.append("minimal_proxy_pattern")
+        
+        if "36600080376020600036600073" in bytecode.lower():
+            patterns.append("openzeppelin_proxy_pattern")
+        
+        if "60806040526004361061" in bytecode.lower():
+            patterns.append("standard_proxy_selector")
+        
+        return patterns
+    
+    @staticmethod
+    async def _get_contract_creation_info(
+        contract_address: str,
+        chain_name: str,
+        timeout: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        获取合约创建信息
+        """
+        try:
+            if chain_name.lower() == "ethereum":
+                # 使用Etherscan API
+                api_key = "YourEtherscanAPIKey"  # 实际应用中应该从配置获取
+                url = f"https://api.etherscan.io/api?module=contract&action=getcontractcreation&contractaddresses={contract_address}&apikey={api_key}"
+                
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=timeout) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            if data.get("status") == "1" and data.get("result"):
+                                return data["result"][0]
+        
+        except Exception as e:
+            logger.debug(f"获取创建信息失败: {e}")
+        
+        return None
+    
+    @staticmethod
+    def _parse_constructor_args(input_data: str) -> List[str]:
+        """
+        解析构造函数参数
+        """
+        args = []
+        
+        try:
+            # 移除函数选择器（前8个字符）
+            if len(input_data) > 10:
+                data = input_data[10:]
+                
+                # 每32字节为一个参数
+                for i in range(0, len(data), 64):
+                    if i + 64 <= len(data):
+                        arg = data[i:i+64]
+                        # 检查是否为地址（后40个字符）
+                        if arg.startswith("000000000000000000000000"):
+                            address = "0x" + arg[24:]
+                            if AdvancedProxyAnalyzer._is_valid_address(address):
+                                args.append(address)
+                        else:
+                            args.append("0x" + arg)
+        
+        except Exception as e:
+            logger.debug(f"解析构造函数参数失败: {e}")
+        
+        return args
+    
+    @staticmethod
+    async def _check_factory_pattern(
+        creator_address: str,
+        rpc_url: str,
+        timeout: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        检查是否为工厂模式代理
+        """
+        try:
+            # 检查创建者是否为已知的代理工厂
+            known_factories = {
+                "0xa6b71e26c5e0845f74c812102ca7114b6a896ab2": "gnosis_safe_factory",
+                "0x76e2cfc1f5fa8f6a5b3fc4c8f4788f0116861f9b": "1967_factory",
+                "0x4e59b44847b379578588920ca78fbf26c0b4956c": "create2_factory"
+            }
+            
+            factory_type = known_factories.get(creator_address.lower())
+            if factory_type:
+                return {
+                    "is_factory_pattern": True,
+                    "factory_type": factory_type,
+                    "factory_address": creator_address
+                }
+        
+        except Exception as e:
+            logger.debug(f"工厂模式检查失败: {e}")
+        
+        return None
+    
+    @staticmethod
+    async def _check_special_proxy_patterns(
+        contract_address: str,
+        rpc_url: str,
+        timeout: int
+    ) -> set:
+        """
+        检查特殊的代理合约模式和已知映射
+        """
+        special_addresses = set()
+        
+        try:
+            # 调试信息
+            logger.info(f"正在检查特殊代理模式，输入地址: {contract_address}")
+            
+            # 尝试一些特殊的存储槽读取模式
+            special_slots = [
+                # 一些自定义代理可能使用的特殊槽位
+                "0x" + "0" * 63 + "3",  # slot 3
+                "0x" + "0" * 63 + "4",  # slot 4
+                "0x" + "0" * 63 + "5",  # slot 5
+                # 基于合约地址计算的槽位 - 先注释掉Web3依赖，使用固定值
+                # Web3.keccak(text="implementation.address").hex(),
+                # Web3.keccak(text="proxy.implementation").hex(),
+                "0xa8cc81bb9aed42d7ab3ea5baecdfee05e7a3f2ad00ae99c5d91ebf481b9d6b2c",  # 常见实现槽
+                "0x7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c3",  # 备用槽
+            ]
+            
+            for slot in special_slots:
+                try:
+                    result = await ProxyContractDetector._read_storage_slot(
+                        contract_address, slot, rpc_url, timeout
+                    )
+                    
+                    if result and result != "0x" + "0" * 64:
+                        # 尝试提取地址
+                        if len(result) >= 42:
+                            address = "0x" + result[-40:]
+                            if AdvancedProxyAnalyzer._is_valid_address(address) and address != "0x" + "0" * 40:
+                                special_addresses.add(address)
+                                logger.info(f"从特殊存储槽 {slot} 找到地址: {address}")
+                                
+                except Exception as e:
+                    logger.debug(f"读取特殊存储槽 {slot} 失败: {e}")
+                    continue
+            
+            # 尝试一些特殊的方法调用
+            special_methods = [
+                "0x4c0195e5",  # owner()
+                "0x8da5cb5b",  # owner() - 另一种签名
+                "0xf851a440",  # admin()
+                "0x84ef8ffc",  # proxy_admin()
+                "0x21f8a721", # implementation_address()
+            ]
+            
+            for method in special_methods:
+                try:
+                    result = await ProxyContractDetector._call_contract_method(
+                        contract_address, method, rpc_url, timeout
+                    )
+                    
+                    if result and result != "0x" and len(result) >= 42:
+                        address = "0x" + result[-40:]
+                        if AdvancedProxyAnalyzer._is_valid_address(address) and address != "0x" + "0" * 40:
+                            special_addresses.add(address)
+                            logger.info(f"从特殊方法 {method} 找到地址: {address}")
+                            
+                except Exception as e:
+                    logger.debug(f"调用特殊方法 {method} 失败: {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.debug(f"特殊模式检测失败: {e}")
+        
+        return special_addresses
+    
+    @staticmethod
+    async def _get_event_logs(
+        contract_address: str,
+        topic: str,
+        rpc_url: str,
+        timeout: int
+    ) -> List[Dict[str, Any]]:
+        """
+        获取事件日志
+        """
+        from app.config import settings
+        
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "eth_getLogs",
+            "params": [{
+                "address": contract_address,
+                "topics": [topic],
+                "fromBlock": "0x0",
+                "toBlock": "latest"
+            }],
+            "id": 1
+        }
+        
+        timeout_config = aiohttp.ClientTimeout(total=timeout)
+        proxy_url = settings.blockchain.https_proxy or settings.blockchain.http_proxy
+        
+        try:
+            async with aiohttp.ClientSession(timeout=timeout_config) as session:
+                async with session.post(rpc_url, json=payload, proxy=proxy_url) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data.get("result", [])
+        except Exception as e:
+            logger.debug(f"获取事件日志失败: {e}")
+        
+        return []
+    
+    @staticmethod
+    def _parse_upgrade_event(log: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        解析升级事件
+        """
+        try:
+            topics = log.get("topics", [])
+            data = log.get("data", "")
+            
+            if len(topics) >= 2:
+                # 通常新实现地址在第二个topic或data中
+                new_impl = topics[1] if len(topics) > 1 else None
+                if new_impl and len(new_impl) == 66:  # 0x + 64字符
+                    address = "0x" + new_impl[26:]  # 提取地址部分
+                    if AdvancedProxyAnalyzer._is_valid_address(address):
+                        return {
+                            "block_number": log.get("blockNumber"),
+                            "transaction_hash": log.get("transactionHash"),
+                            "new_implementation": address
+                        }
+        
+        except Exception as e:
+            logger.debug(f"解析升级事件失败: {e}")
+        
+        return None
+    
+    @staticmethod
+    async def _verify_implementation_address(
+        address: str,
+        rpc_url: str,
+        timeout: int
+    ) -> bool:
+        """
+        验证地址是否为有效的合约地址
+        """
+        try:
+            if not AdvancedProxyAnalyzer._is_valid_address(address):
+                return False
+            
+            # 检查是否有代码
+            bytecode = await ProxyContractDetector._get_contract_bytecode(
+                address, rpc_url, timeout
+            )
+            
+            return bytecode and bytecode != "0x" and len(bytecode) > 2
+        
+        except Exception:
+            return False
+    
+    @staticmethod
+    def _is_valid_address(address: str) -> bool:
+        """
+        检查是否为有效的以太坊地址
+        """
+        if not address or not isinstance(address, str):
+            return False
+        
+        if not address.startswith("0x") or len(address) != 42:
+            return False
+        
+        try:
+            int(address[2:], 16)
+            return True
+        except ValueError:
+            return False
