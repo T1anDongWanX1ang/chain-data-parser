@@ -187,24 +187,6 @@ class ContractEventMonitor():
         
         return True
     
-    async def _update_heartbeat(self):
-        """更新任务心跳时间"""
-        if not self.task_id:
-            return
-        
-        try:
-            from app.services.database_service import database_service
-            from app.services.task_monitor_service import TaskMonitorService
-            
-            async with database_service.get_session() as session:
-                success = await TaskMonitorService.update_task_heartbeat(session, self.task_id)
-                if success:
-                    logger.debug(f"任务心跳已更新: task_id={self.task_id}")
-                else:
-                    logger.warning(f"任务心跳更新失败: task_id={self.task_id}")
-        except Exception as e:
-            logger.error(f"更新任务心跳异常: task_id={self.task_id}, 错误: {e}")
-    
     async def start_monitoring(self, start_block: Optional[int] = None):
         """开始监控事件"""
         if self.is_running:
@@ -236,18 +218,9 @@ class ContractEventMonitor():
     async def _realtime_monitoring(self):
         """实时监控模式"""
         logger.info("启动实时监控模式")
-        heartbeat_interval = 30  # 心跳间隔（秒）
-        last_heartbeat = 0
         
         while self.is_running:
             try:
-                current_time = time.time()
-                
-                # 定期更新心跳
-                if current_time - last_heartbeat >= heartbeat_interval:
-                    await self._update_heartbeat()
-                    last_heartbeat = current_time
-                
                 current_block = self.w3.eth.block_number
                 
                 # 处理新区块
@@ -276,18 +249,10 @@ class ContractEventMonitor():
         
         total_events = 0
         batch_size = self.config.batch_size
-        heartbeat_interval = 30  # 心跳间隔（秒）
-        last_heartbeat = 0
         
         for i in range(start_block, end_block + 1, batch_size):
             if not self.is_running:
                 break
-            
-            # 定期更新心跳
-            current_time = time.time()
-            if current_time - last_heartbeat >= heartbeat_interval:
-                await self._update_heartbeat()
-                last_heartbeat = current_time
                 
             batch_end = min(i + batch_size - 1, end_block)
             

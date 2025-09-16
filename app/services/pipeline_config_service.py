@@ -483,6 +483,7 @@ class PipelineConfigService:
         """异步执行管道任务"""
         import asyncio
         task_log_path = None
+        heartbeat_started = False
         
         try:
             # 这里应该使用独立的数据库会话
@@ -500,17 +501,23 @@ class PipelineConfigService:
                 task_log_path = task.log_path
                 logger.info(f"开始执行任务: task_id={task_id}, log_path={task_log_path}")
 
-            # 第二步：执行管道任务
+            # 第二步：启动心跳守护线程
+            logger.info(f"启动任务心跳守护线程: task_id={task_id}")
+            from app.services.task_monitor_service import heartbeat_manager
+            await heartbeat_manager.start_heartbeat(task_id, interval=30)
+            heartbeat_started = True
+
+            # 第三步：执行管道任务
             logger.info(f"开始执行管道任务: task_id={task_id}")
 
             # 使用优化版配置字典创建管道执行器
             from app.component.pipeline_executor_optimized import OptimizedBlockchainDataPipeline
             pipeline = OptimizedBlockchainDataPipeline(config_dict=config, log_path=task_log_path, task_id=task_id)
 
-            # 第三步：执行管道
+            # 第四步：执行管道
             await pipeline.execute_pipeline()
 
-            # 第四步：更新任务状态为成功
+            # 第五步：更新任务状态为成功
             async with database_service.get_session() as session:
                 task = await session.get(PipelineTask, task_id)
                 if task:
@@ -533,6 +540,16 @@ class PipelineConfigService:
                         await session.commit()
             except Exception as update_error:
                 logger.error(f"更新任务状态失败: {update_error}")
+
+        finally:
+            # 确保心跳守护线程总是被停止
+            if heartbeat_started:
+                try:
+                    from app.services.task_monitor_service import heartbeat_manager
+                    await heartbeat_manager.stop_heartbeat(task_id)
+                    logger.info(f"已停止任务心跳守护线程: task_id={task_id}")
+                except Exception as heartbeat_error:
+                    logger.error(f"停止心跳守护线程失败: task_id={task_id}, 错误: {heartbeat_error}")
 
     async def get_tasks_paginated(self, page: int = 1, page_size: int = 10, status_filter: int = None,
                                   pipeline_name: str = None) -> Tuple[List[Dict[str, Any]], int]:

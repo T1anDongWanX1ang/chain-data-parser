@@ -1,7 +1,8 @@
 """任务监控服务"""
 import asyncio
+import time
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 from loguru import logger
@@ -64,14 +65,17 @@ class TaskMonitorService:
                 logger.warning(f"发现 {len(timeout_tasks)} 个超时任务")
                 
                 for task in timeout_tasks:
-                    task.status = 2  # 失败
-                    # 记录更详细的超时信息
-                    if task.last_heartbeat:
-                        last_heartbeat_str = task.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')
-                        logger.info(f"任务 {task.id} 超时失败 - 最后心跳时间: {last_heartbeat_str}, 超过 {timeout_minutes} 分钟无心跳")
+                    if task.status == 0:  # 只有正在运行的任务才能标记为失败
+                        task.status = 2  # 失败
+                        # 记录更详细的超时信息
+                        if task.last_heartbeat:
+                            last_heartbeat_str = task.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S')
+                            logger.info(f"任务 {task.id} 超时失败 - 最后心跳时间: {last_heartbeat_str}, 超过 {timeout_minutes} 分钟无心跳")
+                        else:
+                            create_time_str = task.create_time.strftime('%Y-%m-%d %H:%M:%S') if task.create_time else 'N/A'
+                            logger.info(f"任务 {task.id} 超时失败 - 创建时间: {create_time_str}, 超过 {timeout_minutes} 分钟无心跳")
                     else:
-                        create_time_str = task.create_time.strftime('%Y-%m-%d %H:%M:%S') if task.create_time else 'N/A'
-                        logger.info(f"任务 {task.id} 超时失败 - 创建时间: {create_time_str}, 超过 {timeout_minutes} 分钟无心跳")
+                        logger.warning(f"任务 {task.id} 状态已改变，跳过超时处理: 当前状态={task.status}")
                 
                 await session.commit()
                 logger.info(f"已标记 {len(timeout_tasks)} 个超时任务为失败")
@@ -205,8 +209,136 @@ class TaskMonitorDaemon:
         return self.running and self._task and not self._task.done()
 
 
+class HeartbeatDaemon:
+    """心跳守护线程"""
+    
+    def __init__(self, task_id: int, interval: int = 30):
+        """
+        初始化心跳守护线程
+        
+        Args:
+            task_id: 任务ID
+            interval: 心跳间隔（秒）
+        """
+        self.task_id = task_id
+        self.interval = interval
+        self.is_running = False
+        self._task: Optional[asyncio.Task] = None
+        self.last_heartbeat_time = 0
+        self.heartbeat_count = 0
+        
+    async def start(self):
+        """启动心跳守护线程"""
+        if self.is_running:
+            logger.warning(f"心跳守护线程已在运行: task_id={self.task_id}")
+            return
+            
+        self.is_running = True
+        self._task = asyncio.create_task(self._heartbeat_loop())
+        logger.info(f"心跳守护线程已启动: task_id={self.task_id}, 间隔={self.interval}秒")
+    
+    async def stop(self):
+        """停止心跳守护线程"""
+        if not self.is_running:
+            return
+            
+        self.is_running = False
+        if self._task and not self._task.done():
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        
+        logger.info(f"心跳守护线程已停止: task_id={self.task_id}, 总心跳次数={self.heartbeat_count}")
+    
+    async def _heartbeat_loop(self):
+        """心跳循环"""
+        while self.is_running:
+            try:
+                await self._update_heartbeat()
+                self.heartbeat_count += 1
+                self.last_heartbeat_time = time.time()
+                
+                # 等待下次心跳
+                await asyncio.sleep(self.interval)
+                
+            except asyncio.CancelledError:
+                logger.info(f"心跳守护线程被取消: task_id={self.task_id}")
+                break
+            except Exception as e:
+                logger.error(f"心跳守护线程异常: task_id={self.task_id}, 错误: {e}")
+                # 异常时等待较短时间后重试
+                await asyncio.sleep(5)
+    
+    async def _update_heartbeat(self):
+        """更新心跳到数据库"""
+        try:
+            from app.services.database_service import database_service
+            
+            async with database_service.get_session() as session:
+                success = await TaskMonitorService.update_task_heartbeat(session, self.task_id)
+                if success:
+                    logger.debug(f"心跳更新成功: task_id={self.task_id}")
+                else:
+                    logger.warning(f"心跳更新失败: task_id={self.task_id}")
+                    
+        except Exception as e:
+            logger.error(f"心跳更新异常: task_id={self.task_id}, 错误: {e}")
+    
+    def get_status(self) -> Dict[str, Any]:
+        """获取心跳状态"""
+        return {
+            "task_id": self.task_id,
+            "is_running": self.is_running,
+            "interval": self.interval,
+            "last_heartbeat_time": self.last_heartbeat_time,
+            "heartbeat_count": self.heartbeat_count,
+            "time_since_last_heartbeat": time.time() - self.last_heartbeat_time if self.last_heartbeat_time > 0 else None
+        }
+
+
+class HeartbeatManager:
+    """心跳管理器 - 管理所有任务的心跳守护线程"""
+    
+    def __init__(self):
+        self.daemons: Dict[int, HeartbeatDaemon] = {}
+    
+    async def start_heartbeat(self, task_id: int, interval: int = 30):
+        """启动任务的心跳守护线程"""
+        if task_id in self.daemons:
+            logger.warning(f"任务 {task_id} 的心跳守护线程已存在")
+            return
+        
+        daemon = HeartbeatDaemon(task_id, interval)
+        await daemon.start()
+        self.daemons[task_id] = daemon
+        logger.info(f"已启动任务 {task_id} 的心跳守护线程")
+    
+    async def stop_heartbeat(self, task_id: int):
+        """停止任务的心跳守护线程"""
+        if task_id in self.daemons:
+            await self.daemons[task_id].stop()
+            del self.daemons[task_id]
+            logger.info(f"已停止任务 {task_id} 的心跳守护线程")
+    
+    async def stop_all_heartbeats(self):
+        """停止所有心跳守护线程"""
+        for task_id in list(self.daemons.keys()):
+            await self.stop_heartbeat(task_id)
+    
+    def get_heartbeat_status(self, task_id: int) -> Optional[Dict[str, Any]]:
+        """获取任务的心跳状态"""
+        if task_id in self.daemons:
+            return self.daemons[task_id].get_status()
+        return None
+
+
 # 全局监控守护进程实例
 task_monitor_daemon = TaskMonitorDaemon()
+
+# 全局心跳管理器实例
+heartbeat_manager = HeartbeatManager()
 
 
 # 应用启动时调用的函数
@@ -232,6 +364,10 @@ async def initialize_task_monitoring():
 async def shutdown_task_monitoring():
     """关闭任务监控"""
     try:
+        # 停止所有心跳守护线程
+        await heartbeat_manager.stop_all_heartbeats()
+        
+        # 停止任务监控守护进程
         await task_monitor_daemon.stop_monitoring()
         logger.info("任务监控系统已关闭")
     except Exception as e:
