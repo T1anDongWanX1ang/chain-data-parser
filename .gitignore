@@ -5,3 +5,6 @@ __pycache__/
 logs/
 app/logs/
 *.log
+
+# ABI文件目录
+abis/
