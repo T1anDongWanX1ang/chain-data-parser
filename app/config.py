@@ -71,6 +71,22 @@ class LogSettings(BaseSettings):
     file: str = Field(default="logs/app.log", alias="LOG_FILE")
 
 
+class AlertSettings(BaseSettings):
+    """告警配置"""
+    api_keys: str = Field(default="chain-parser-api-key-2024,external-system-key-001", alias="ALERT_API_KEYS")
+    
+    @property
+    def valid_api_keys(self) -> set:
+        """获取有效的API密钥集合"""
+        return set(key.strip() for key in self.api_keys.split(',') if key.strip())
+    
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore"
+    }
+
+
 class Settings(BaseSettings):
     """应用配置"""
     database: DatabaseSettings = DatabaseSettings()
@@ -79,6 +95,7 @@ class Settings(BaseSettings):
     api: APISettings = APISettings()
     security: SecuritySettings = SecuritySettings()
     log: LogSettings = LogSettings()
+    alert: AlertSettings = AlertSettings()
 
     model_config = {
         "env_file": ".env",
